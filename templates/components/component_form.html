@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block page_title %}
+  {% if form.instance.pk %}Edit{% else %}Create{% endif %} Component
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-3">
+      {% if form.instance.pk %}Edit{% else %}Create{% endif %} Component
+    </h4>
+
+    <form method="post" enctype="multipart/form-data" novalidate id="component-form">
+      {% csrf_token %}
+
+      {# Non-field errors #}
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      {# ------------------ If this is ComponentMasterForm (has cost_per_unit) ------------------ #}
+      {# Allow view to explicitly set `is_master_form`; otherwise fall back to checking for the field #}
+      {% if is_master_form or form.fields.cost_per_unit %}
+        <div class="row g-3">
+
+          {# NOTE: Name removed from UI (auto-generated). Do NOT show name input. #}
+
+          <div class="col-md-4">
+            {{ form.inventory_category.label_tag }}
+            {{ form.inventory_category }}
+            {% if form.inventory_category.errors %}
+              <div class="text-danger small">{{ form.inventory_category.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-8">
+            <label class="form-label">Product (select from inventory)</label>
+            <select id="component_product_select" class="form-select" aria-label="Product select">
+              <option value="">-- Select product (choose category first) --</option>
+            </select>
+            <div id="component_product_help" class="form-text"></div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Quality / Variant</label>
+
+            {# Render server-side widget safely; small client patch below will ensure id/class exist #}
+            {{ form.quality }}
+            <div id="component_quality_help" class="form-text"></div>
+            {% if form.quality.errors %}
+              <div class="text-danger small">{{ form.quality.errors }}</div>
+            {% endif %}
+          </div>
+
+          {# SIZE removed from UI; computations will use default size = 1.00 #}
+          {# <div class="col-md-2"> ... size ... </div> removed intentionally #}
+
+          <div class="col-md-3">
+            <label class="form-label">Cost per unit</label>
+            {{ form.cost_per_unit }}
+            {% if form.cost_per_unit.errors %}
+              <div class="text-danger small">{{ form.cost_per_unit.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-3">
+            {{ form.logistics_percent.label_tag }}
+            {{ form.logistics_percent }}
+            {% if form.logistics_percent.errors %}
+              <div class="text-danger small">{{ form.logistics_percent.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-2">
+            <label class="form-label">Width</label>
+            {{ form.width }}
+            {% if form.width.errors %}
+              <div class="text-danger small">{{ form.width.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-2">
+            <label class="form-label">Width UoM</label>
+            {{ form.width_uom }}
+            {% if form.width_uom.errors %}
+              <div class="text-danger small">{{ form.width_uom.errors }}</div>
+            {% endif %}
+          </div>
+
+          {# New readonly Type field (form provides form.type) #}
+          <div class="col-md-4">
+            <label class="form-label">Type</label>
+            {% if form.type %}
+              {{ form.type }}
+            {% else %}
+              <input type="text" id="id_type" readonly class="form-control" aria-readonly="true" />
+            {% endif %}
+            <div id="component_type_help" class="form-text"></div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Final price per unit (price + logistics%)</label>
+            {{ form.final_price_per_unit }}
+            {% if form.final_price_per_unit.errors %}
+              <div class="text-danger small">{{ form.final_price_per_unit.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Price per sq. foot</label>
+            {{ form.price_per_sqfoot }}
+            {% if form.price_per_sqfoot.errors %}
+              <div class="text-danger small">{{ form.price_per_sqfoot.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Final cost (size × unit × (1 + logistics%))</label>
+            {{ form.final_cost }}
+            {% if form.final_cost.errors %}
+              <div class="text-danger small">{{ form.final_cost.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-12">
+            {{ form.notes.label_tag }}
+            {{ form.notes }}
+            {% if form.notes.errors %}
+              <div class="text-danger small">{{ form.notes.errors }}</div>
+            {% endif %}
+          </div>
+
+          {# Hidden name field (auto-generated by client JS). Keep it so server receives the name. #}
+          {{ form.name }}
+
+          {# Hidden inventory linking fields required by the forms #}
+          {{ form.inventory_content_type }}
+          {{ form.inventory_object_id }}
+        </div>
+
+      {# ------------------ Fallback: CostComponentForm UI ------------------ #}
+      {% else %}
+        <div class="mb-3">
+          {{ form.name.label_tag }}
+          {{ form.name }}
+          {% if form.name.errors %}
+            <div class="text-danger small">{{ form.name.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-3">
+          {{ form.inventory_category.label_tag }}
+          {{ form.inventory_category }}
+          {% if form.inventory_category.errors %}
+            <div class="text-danger small">{{ form.inventory_category.errors }}</div>
+          {% endif %}
+        </div>
+
+        {# Product & quality selectors are present here too (so user can pick an inventory item) #}
+        <div class="mb-3">
+          <label class="form-label">Product (select from inventory)</label>
+          <select id="component_product_select" class="form-select" aria-label="Product select">
+            <option value="">-- Select product (choose category first) --</option>
+          </select>
+          <div id="component_product_help" class="form-text"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Quality / Variant</label>
+
+          {{ form.quality }}
+          <div id="component_quality_help" class="form-text"></div>
+          {% if form.quality.errors %}
+            <div class="text-danger small">{{ form.quality.errors }}</div>
+          {% endif %}
+        </div>
+
+        {% if form.inventory_selector %}
+          <div class="mb-3">
+            {{ form.inventory_selector.label_tag }}
+            {{ form.inventory_selector }}
+            {% if form.inventory_selector.errors %}
+              <div class="text-danger small">{{ form.inventory_selector.errors }}</div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {{ form.inventory_content_type }}
+        {{ form.inventory_object_id }}
+
+        <div class="mb-3">
+          {{ form.value_type.label_tag }}
+          {{ form.value_type }}
+          {% if form.value_type.errors %}
+            <div class="text-danger small">{{ form.value_type.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-3">
+          {{ form.value.label_tag }}
+          {{ form.value }}
+          {% if form.value.errors %}
+            <div class="text-danger small">{{ form.value.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-3">
+          {{ form.description.label_tag }}
+          {{ form.description }}
+          {% if form.description.errors %}
+            <div class="text-danger small">{{ form.description.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="form-check mb-3">
+          {{ form.is_active }}
+          {{ form.is_active.label_tag }}
+          {% if form.is_active.errors %}
+            <div class="text-danger small">{{ form.is_active.errors }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# Buttons #}
+      <div class="mt-4">
+        {% if not form.instance.pk %}
+          {# Accept either componentmaster or costcomponent add permission to allow Save #}
+          {% if perms.components.add_componentmaster or perms.components.add_costcomponent or user.is_superuser %}
+            <button type="submit" class="btn btn-success">Save</button>
+          {% else %}
+            <button type="button" class="btn btn-secondary" disabled>
+              You don't have permission to save
+            </button>
+          {% endif %}
+        {% else %}
+          {# Accept either change permission #}
+          {% if perms.components.change_componentmaster or perms.components.change_costcomponent or user.is_superuser %}
+            <button type="submit" class="btn btn-success">Update</button>
+          {% else %}
+            <button type="button" class="btn btn-secondary" disabled>
+              You don't have permission to update
+            </button>
+          {% endif %}
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{% url 'components:list' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ======================================================= #}
+{# Define CONFIG first, then include JS (correct order)   #}
+{# ======================================================= #}
+
+<script>
+  window.COMPONENT_FORM_CONFIG = {
+    urls: {
+      inventory_items: "{% url 'components:inventory-items-json' %}",
+      inventory_qualities: "{% url 'components:inventory-qualities-json' %}",
+      inventory_cost: "{% url 'components:inventory-cost-json' %}",
+      qualities_by_category: "{% url 'components:qualities-by-category-json' %}",
+      types_by_quality: "{% url 'components:types-by-quality-json' %}",
+      inventory_item: "{% url 'components:inventory-item-json' %}"
+    },
+    csrfToken: "{{ csrf_token }}",
+    selectors: {
+      productSelect: "#component_product_select",
+      qualitySelect: "#component_quality_select",
+      // size removed: keep entry null so existing JS doesn't blow up if it expects this key
+      sizeInput: null,
+      logisticsInput: "#id_logistics_percent",
+      costInput: "#id_cost_per_unit",
+      widthInput: "#id_width",
+      widthUomInput: "#id_width_uom",
+      finalPriceInput: "#id_final_price_per_unit",
+      pricePerSqftInput: "#id_price_per_sqfoot",
+      finalCostInput: "#id_final_cost",
+      hiddenCT: "#id_inventory_content_type",
+      hiddenOID: "#id_inventory_object_id",
+      categorySelect: "#id_inventory_category",
+      // new selector for type (form.type or fallback input)
+      typeInput: "#id_type"
+    }
+  };
+</script>
+
+<script src="{% static 'components/js/component_form.js' %}"></script>
+
+{# Client-side patch to ensure the rendered quality widget has expected id/class/aria-label.
+   This avoids embedding complex Python calls inside the template and keeps server rendering safe. #}
+<script>
+(function () {
+  try {
+    const qname = "{{ form.quality.name|default:'' }}";
+    if (qname) {
+      // use querySelector to find whichever widget the form rendered (select/input)
+      const el = document.querySelector('[name="' + qname + '"]');
+      if (el) {
+        // ensure id expected by JS
+        if (!el.id || el.id.trim() === "") el.id = "component_quality_select";
+        // ensure bootstrap form-select class present for selects; add if missing
+        if (!el.classList.contains("form-select")) el.classList.add("form-select");
+        // ensure aria-label for accessibility
+        if (!el.getAttribute("aria-label")) el.setAttribute("aria-label", "Quality select");
+      }
+    }
+  } catch (err) {
+    // non-fatal
+    console.warn("component_form: failed to patch quality element attributes", err);
+  }
+})();
+</script>
+
+{# Defensive: ensure product options display inventory type when available.
+   This rewrites option text to prefer data-type and watches for changes. #}
+<script>
+(function () {
+  try {
+    const prod = document.querySelector("#component_product_select");
+    if (!prod) return;
+
+    function preferTypeOnOptions() {
+      for (let i = 0; i < prod.options.length; i++) {
+        const o = prod.options[i];
+        // prefer data-type attribute (set by component_form.js) if present & non-empty
+        const t = o.dataset && o.dataset.type ? String(o.dataset.type).trim() : "";
+        if (t) {
+          // preserve placeholder option (has empty value)
+          if (o.value) o.text = t;
+        }
+      }
+    }
+
+    // Run once now (for already-populated options)
+    preferTypeOnOptions();
+
+    // Observe future changes (options added/removed)
+    const mo = new MutationObserver(preferTypeOnOptions);
+    mo.observe(prod, { childList: true });
+
+    // Cleanup on page unload to avoid leaks
+    window.addEventListener("unload", () => mo.disconnect());
+  } catch (err) {
+    // swallow errors — non-critical enhancement
+    console.warn("[component_form] preferTypeOnOptions error", err);
+  }
+})();
+</script>
+
+{% endblock %}

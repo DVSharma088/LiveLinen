@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}Category Master List — Live Linen{% endblock %}
+
+{% block head_extra %}
+<style>
+/* Container that provides horizontal scrolling when table is wider than viewport */
+.table-horizontal-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e9ecef;
+  border-radius: 0.35rem;
+  position: relative;
+  background: #fff;
+}
+
+/* Make the table take its natural width; this prevents it from shrinking to fill the container.
+   When the table is wide, the container will show a horizontal scrollbar and only left columns will be visible initially.
+*/
+.table-horizontal-wrap table {
+  width: max-content;
+  min-width: 900px; /* adjust this as needed; larger = more space before scroll */
+  border-collapse: separate;
+  border-spacing: 0 0;
+}
+
+/* Slightly increased padding and spacing for better readability */
+.table-sm th, .table-sm td {
+  padding: .65rem .9rem;   /* increased from .45rem .5rem */
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* Subtle vertical divider between columns */
+.table-horizontal-wrap td,
+.table-horizontal-wrap th {
+  border-right: 1px solid rgba(0,0,0,0.05);
+}
+
+/* Sticky header */
+.table-horizontal-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: linear-gradient(#ffffff, #f8f9fa);
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.03);
+  white-space: nowrap;
+}
+
+/* Sticky first column so left context remains visible while scrolling horizontally */
+.table-horizontal-wrap tbody th,
+.table-horizontal-wrap tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background: white;
+  box-shadow: 2px 0 5px -3px rgba(0,0,0,0.08);
+  white-space: nowrap;
+}
+
+/* Drag cursor */
+.table-horizontal-wrap.is-grabbing { cursor: grabbing; cursor: -moz-grabbing; }
+.table-horizontal-wrap.is-grab { cursor: grab; cursor: -moz-grab; }
+
+/* small scrollbar polish */
+.table-horizontal-wrap::-webkit-scrollbar { height: 10px; }
+.table-horizontal-wrap::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+  border-radius: 6px;
+}
+
+/* Left/right quick-scroll buttons (appear overlayed on edges) */
+.table-scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  transition: background .15s ease;
+}
+.table-scroll-btn:hover { background: rgba(0,0,0,0.12); }
+.table-scroll-btn:active { transform: translateY(-50%) scale(.98); }
+.table-scroll-left { left: 6px; }
+.table-scroll-right { right: 6px; }
+
+/* hide arrow buttons on small screens so they don't obstruct touch-drag UX */
+@media (max-width: 768px) {
+  .table-scroll-btn { display: none; }
+}
+
+/* helpful truncation for first column if names are long */
+.first-col-truncate {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>
+{% endblock %}
+
+{% block page_title %}Category Master List{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Category Masters</h4>
+  <a href="{% url 'category_master:create' %}" class="btn btn-success">Create Category</a>
+</div>
+
+<div class="mb-3 d-flex gap-2 flex-wrap">
+  <form method="get" class="d-flex gap-2">
+    <input type="search" name="q" value="{{ request.GET.q }}" class="form-control form-control-sm" placeholder="Search by component..." />
+    <button class="btn btn-sm btn-outline-secondary" type="submit">Search</button>
+  </form>
+</div>
+
+<!-- scroll buttons -->
+<div style="position:relative;">
+  <button id="scroll-left" class="table-scroll-btn table-scroll-left" title="Scroll left">◀</button>
+  <button id="scroll-right" class="table-scroll-btn table-scroll-right" title="Scroll right">▶</button>
+
+  <div id="category-table-wrap" class="table-horizontal-wrap is-grab">
+    <table class="table table-striped table-sm mb-0">
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>GF (%)</th>
+          <th>Texas Buying (%)</th>
+          <th>Texas Retail (%)</th>
+          <th>Shipping (INR)</th>
+          <th>TX→US (%)</th>
+          <th>Import (%)</th>
+          <th>New Tariff (%)</th>
+          <th>Recip. Tariff (%)</th>
+          <th>Ship US (%)</th>
+          <th>US Wholesale (%)</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for c in categories %}
+        <tr>
+          {# show full component name safely - fallback to __str__ if .name not present #}
+          <td class="first-col-truncate text-start" title="{{ c.component.name|default:c.component }}">{{ c.component.name|default:c.component }}</td>
+
+          <td>
+            {% if c.gf_overhead is not None %}{{ c.gf_overhead|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.texas_buying_cost is not None %}{{ c.texas_buying_cost|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.texas_retail is not None %}{{ c.texas_retail|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.shipping_cost_inr is not None %}{{ c.shipping_cost_inr|floatformat:2 }}{% endif %}
+          </td>
+
+          <td>
+            {% if c.texas_to_us_selling_cost is not None %}{{ c.texas_to_us_selling_cost|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.import_cost is not None %}{{ c.import_cost|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.new_tariff is not None %}{{ c.new_tariff|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.reciprocal_tariff is not None %}{{ c.reciprocal_tariff|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.shipping_us is not None %}{{ c.shipping_us|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>
+            {% if c.us_wholesale_margin is not None %}{{ c.us_wholesale_margin|floatformat:2 }}%{% endif %}
+          </td>
+
+          <td>{{ c.created_at|date:"Y-m-d" }}</td>
+
+          <td>
+            <div class="d-inline-flex gap-1 align-items-center">
+              <a href="{% url 'category_master:update' c.pk %}" class="btn btn-sm btn-outline-primary" title="Edit">✎</a>
+
+              <form action="{% url 'category_master:delete' c.pk %}" method="post" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete category">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="13" class="text-center">No categories yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if is_paginated %}
+<nav class="mt-3" aria-label="Page navigation">
+  <ul class="pagination pagination-sm">
+    {% if page_obj.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Prev</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Prev</span></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+    {% if page_obj.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Next</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Next</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+(function() {
+  const wrap = document.getElementById('category-table-wrap');
+  if (!wrap) return;
+
+  // Drag-to-scroll mechanics for desktop
+  let isDown = false;
+  let startX;
+  let scrollLeft;
+
+  wrap.addEventListener('mousedown', (e) => {
+    isDown = true;
+    wrap.classList.add('is-grabbing');
+    startX = e.pageX - wrap.offsetLeft;
+    scrollLeft = wrap.scrollLeft;
+    e.preventDefault();
+  });
+  window.addEventListener('mouseup', () => {
+    isDown = false;
+    wrap.classList.remove('is-grabbing');
+  });
+  wrap.addEventListener('mouseleave', () => {
+    isDown = false;
+    wrap.classList.remove('is-grabbing');
+  });
+  wrap.addEventListener('mousemove', (e) => {
+    if (!isDown) return;
+    const x = e.pageX - wrap.offsetLeft;
+    const walk = (x - startX) * 1.2; // speed factor
+    wrap.scrollLeft = scrollLeft - walk;
+  });
+
+  // Touch events for mobile
+  let touchStartX = 0;
+  let touchScrollLeft = 0;
+  wrap.addEventListener('touchstart', function(e) {
+    touchStartX = e.touches[0].pageX - wrap.offsetLeft;
+    touchScrollLeft = wrap.scrollLeft;
+  }, {passive: true});
+  wrap.addEventListener('touchmove', function(e) {
+    const x = e.touches[0].pageX - wrap.offsetLeft;
+    const walk = (x - touchStartX) * 1.2;
+    wrap.scrollLeft = touchScrollLeft - walk;
+  }, {passive: true});
+
+  // Arrow buttons for quick scroll
+  const leftBtn = document.getElementById('scroll-left');
+  const rightBtn = document.getElementById('scroll-right');
+  const SCROLL_STEP = Math.round(window.innerWidth * 0.6); // scroll by ~60% viewport
+
+  leftBtn.addEventListener('click', () => {
+    wrap.scrollBy({ left: -SCROLL_STEP, behavior: 'smooth' });
+  });
+  rightBtn.addEventListener('click', () => {
+    wrap.scrollBy({ left: SCROLL_STEP, behavior: 'smooth' });
+  });
+
+  // Hide/disable left button initially if at start, and handle visibility
+  function updateButtons() {
+    if (wrap.scrollLeft <= 5) leftBtn.style.opacity = '0.4'; else leftBtn.style.opacity = '1';
+    if (wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 5) rightBtn.style.opacity = '0.4'; else rightBtn.style.opacity = '1';
+  }
+  wrap.addEventListener('scroll', updateButtons);
+  window.addEventListener('resize', updateButtons);
+  updateButtons();
+})();
+</script>
+{% endblock %}

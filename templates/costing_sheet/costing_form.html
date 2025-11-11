@@ -1,0 +1,1093 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Create Costing Sheet | Live Linen{% endblock %}
+{% block page_title %}Create Costing Sheet{% endblock %}
+
+{% block content %}
+<style>
+  /* Inline styling to make the form cleaner and well organized */
+  .costing-wrap { max-width: 1100px; margin: 0 auto; }
+  .costing-fieldset { border: 1px solid #e9ecef; border-radius: 8px; padding: 1rem; background: #fff; }
+  .costing-legend { font-weight: 600; font-size: 0.95rem; color: #333; margin-bottom: 0.5rem; }
+  .small-note { font-size: 0.82rem; color: #6c757d; }
+
+  /* Grid styles */
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; align-items: start; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; align-items: start; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; align-items: start; }
+
+  /* Form styles */
+  .card-header .mb-0 { font-weight: 700; }
+  .form-label { font-size: 0.88rem; font-weight: 600; margin-bottom: 0.25rem; display:block; }
+  .form-control[readonly] { background: #f8f9fa; border-color: #e9ecef; }
+  .compact .form-control { padding: 0.4rem 0.6rem; height: calc(1.8rem + 0.6rem); }
+  
+  /* --- THIS IS THE CRITICAL STYLE --- */
+  .invalid-feedback { 
+    display: none; /* Hide by default */
+    width: 100%; 
+    margin-top: 0.25rem; 
+    font-size: .875em; 
+    color: #dc3545; 
+  }
+  /* Show error messages when they are present */
+  .invalid-feedback.d-block {
+    display: block;
+  }
+  /* Style the field itself when it has an error */
+  .form-control.is-invalid {
+    border-color: #dc3545;
+  }
+  .alert ul { margin-bottom: 0; }
+  .alert-danger { padding: 0.75rem 1rem; }
+  /* --- END CRITICAL STYLE --- */
+
+  /* Accessory area */
+  .accessory-qty-group { display:flex; gap:0.5rem; align-items: center; }
+  .accessory-qty-group .form-control { width: 4.5rem; text-align: center; }
+
+  /* Buttons */
+  .form-actions { display:flex; gap:0.75rem; margin-top: 0.75rem; }
+  .muted-label { color: #6c757d; font-size: 0.85rem; }
+
+  /* Responsive fallbacks */
+  @media (max-width: 767px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .compact .form-control { height: auto; }
+  }
+
+  fieldset + fieldset { margin-top: 1rem; }
+</style>
+
+<div class="costing-wrap">
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items:center">
+      <h5 class="mb-0">Create Costing Sheet</h5>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'costing_sheet:list' %}">Back to list</a>
+    </div>
+
+    <div class="card-body">
+      <form method="post" id="costing-form" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Category</div>
+          <div class="grid-2">
+            <div>
+              <label class="form-label">Category</label>
+              {% if form.category %}
+                {{ form.category }}
+                <div class="invalid-feedback d-block">{{ form.category.errors }}</div>
+              {% else %}
+                <select id="id_category_select" name="category" class="form-select" data-initial="{{ form.initial.category|default:'' }}">
+                  <option value="">-- select category --</option>
+                  {% if categories %}
+                    {% for c in categories %}
+                      <option value="{% if c.id %}{{ c.id }}{% elif c.pk %}{{ c.pk }}{% else %}{{ c }}{% endif %}">
+                        {% if c.name %}{{ c.name }}{% elif c.title %}{{ c.title }}{% elif c.label %}{{ c.label }}{% else %}{{ c }}{% endif %}
+                      </option>
+                    {% endfor %}
+                  {% endif %}
+                </select>
+              {% endif %}
+              <div class="small-note mt-1">Pick a category — quality/component options are available in the next section.</div>
+            </div>
+
+            <div>
+              <label class="form-label">Name</label>
+              {% if form.name %}
+                {{ form.name }}
+                <div class="invalid-feedback d-block">{{ form.name.errors }}</div>
+              {% else %}
+                <input id="id_name" name="name" class="form-control" placeholder="Enter name" value="{{ form.initial.name|default:'' }}">
+              {% endif %}
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Collection & Color</div>
+          <div class="grid-2">
+            <div>
+              <label class="form-label">Collection</label>
+              {% if form.collection %}
+                {{ form.collection }}
+                <div class="invalid-feedback d-block">{{ form.collection.errors }}</div>
+              {% else %}
+                <input id="id_collection" name="collection" class="form-control" value="{{ form.initial.collection|default:'' }}">
+              {% endif %}
+            </div>
+            <div>
+              <label class="form-label">Color</label>
+              {% if form.color %}
+                {{ form.color }}
+                <div class="invalid-feedback d-block">{{ form.color.errors }}</div>
+              {% else %}
+                <input id="id_color" name="color" class="form-control" value="{{ form.initial.color|default:'' }}">
+              {% endif %}
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">SKU (auto-filled)</div>
+          <div class="grid-2">
+            <div>
+              <label class="form-label">SKU</label>
+              {% if form.sku %}
+                {{ form.sku }}
+                <div class="invalid-feedback d-block">{{ form.sku.errors }}</div>
+              {% else %}
+                <input id="id_sku" name="sku" class="form-control" readonly placeholder="Auto-generated" value="{{ form.initial.sku|default:'' }}">
+              {% endif %}
+              <div class="small-note mt-1">Auto-generated from Category, Collection, Name, Color & Size.</div>
+            </div>
+            <div>
+              <label class="form-label muted-label">How it's made</label>
+              <div class="form-control" readonly>
+                <span class="small-note">
+                  <strong>Cat</strong>(2 initials) + <strong>Col</strong>(2 initials) + <strong>Name</strong>(2nd word, 3 letters) + <strong>Clr</strong>(2 initials) + <strong>Size</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Category Master (New) — Size & Work</div>
+          <div class="grid-2">
+            <div>
+              <label class="form-label">Category Master (Name)</label>
+              {% if form.category_new %}
+                {{ form.category_new }}
+                <div class="invalid-feedback d-block">{{ form.category_new.errors }}</div>
+              {% else %}
+                <select id="id_category_master_new_select" name="category_new" class="form-select" data-initial="{{ form.initial.category_new|default:'' }}">
+                  <option value="">-- select category master --</option>
+                  {% if categories %} {# This block might be redundant if form provides options #}
+                    {% for c in categories %}
+                      <option value="{% if c.id %}{{ c.id }}{% elif c.pk %}{{ c.pk }}{% else %}{{ c }}{% endif %}">
+                        {% if c.name %}{{ c.name }}{% elif c.title %}{{ c.title }}{% elif c.label %}{{ c.label }}{% else %}{{ c }}{% endif %}
+                      </option>
+                    {% endfor %}
+                  {% endif %}
+                </select>
+              {% endif %}
+              <div class="small-note mt-1">Select the Category Master (Name). Sizes load automatically.</div>
+            </div>
+
+            <div>
+              <label class="form-label">Size</label>
+              {% if form.size_master %}
+                {{ form.size_master }}
+                <div class="invalid-feedback d-block">{{ form.size_master.errors }}</div>
+              {% else %}
+                <select id="id_size_master_select" name="size_master" class="form-select">
+                  <option value="">-- select size --</option>
+                </select>
+              {% endif %}
+              <div class="small-note mt-1">SKU uses the <strong>selected size label</strong> (e.g., S, M, XL, XXL).</div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Quality</div>
+          <div>
+            <label class="form-label">Quality Name</label>
+            {% if form.component_master %}
+              {{ form.component_master }}
+              <div class="invalid-feedback d-block">{{ form.component_master.errors }}</div>
+            {% else %}
+              <select id="id_component_master_select" name="component_master" class="form-select">
+                <option value="">-- select quality --</option>
+              </select>
+            {% endif %}
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Component snapshot (auto-filled)</div>
+          <div class="grid-3">
+            <div>
+              <label class="form-label">Width</label>
+              {% if form.width %}
+                {{ form.width }}
+                <div class="invalid-feedback d-block">{{ form.width.errors }}</div>
+              {% else %}
+                <input id="id_width" name="width" class="form-control" step="0.01" min="0" value="0.00">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">Width UOM</label>
+              {% if form.width_uom %}
+                {{ form.width_uom }}
+                <div class="invalid-feedback d-block">{{ form.width_uom.errors }}</div>
+              {% else %}
+                <input id="id_width_uom" name="width_uom" class="form-control" value="inch">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">Price / sq.ft</label>
+              {% if form.price_per_sqft %}
+                {{ form.price_per_sqft }}
+                <div class="invalid-feedback d-block">{{ form.price_per_sqft.errors }}</div>
+              {% else %}
+                <input id="id_price_per_sqft" name="price_per_sqft" class="form-control" step="0.0001" min="0" value="0.0000">
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="grid-2 mt-3">
+            <div>
+              <label class="form-label">Final Cost</label>
+              {% if form.final_cost %}
+                {{ form.final_cost }}
+                <div class="invalid-feedback d-block">{{ form.final_cost.errors }}</div>
+              {% else %}
+                <input id="id_final_cost" name="final_cost" class="form-control" step="0.01" min="0" value="0.00">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">(Optional) Handwork</label>
+              {% if form.handwork %}
+                {{ form.handwork }}
+                <div class="invalid-feedback d-block">{{ form.handwork.errors }}</div>
+              {% else %}
+                 <input id="id_handwork" name="handwork" class="form-control" value="{{ form.initial.handwork|default:'' }}">
+              {% endif %}
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Pricing — Average & Shipping (partial)</div>
+          <div class="grid-4">
+            <div>
+              <label class="form-label">Average</label>
+              {% if form.average %}
+                {{ form.average }}
+                <div class="invalid-feedback d-block">{{ form.average.errors }}</div>
+              {% else %}
+                <input id="id_average" name="average" class="form-control" type="number" step="0.001" min="0" value="0.0000">
+              {% endif %}
+              <div class="small-note mt-1">Enter Average numeric used to scale Final Cost.</div>
+
+              <!-- Total basis selector placed under Average for compactness -->
+              <div class="mt-2">
+                <label class="form-label small mb-1">Total basis</label>
+                <select id="id_total_basis" name="total_basis" class="form-select">
+                  <option value="final_cost" selected>Final Cost</option>
+                  <option value="price_per_sqft">Price / sq.ft</option>
+                </select>
+                <div class="small-note mt-1">Choose which field is multiplied by Average to compute Total.</div>
+              </div>
+            </div>
+
+            <div>
+              <label class="form-label">Total <span id="total_label_text" class="small-note">(Final Cost × Average)</span></label>
+              {% if form.total %}
+                {{ form.total }}
+              {% else %}
+                <input id="id_total" name="total" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">New Final Price <small class="small-note">(includes Stitching, Finishing, Packaging & Accessory line total)</small></label>
+              {% if form.new_final_price %}
+                {{ form.new_final_price }}
+              {% else %}
+                <input id="id_new_final_price" name="new_final_price" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">Shipping Cost India (INR)</label>
+              {% if form.shipping_cost_india %}
+                {{ form.shipping_cost_india }}
+                <div class="invalid-feedback d-block">{{ form.shipping_cost_india.errors }}</div>
+              {% else %}
+                <input id="id_shipping_cost_india" name="shipping_cost_india" class="form-control" type="number" step="0.01" min="0" value="0.00">
+              {% endif %}
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Accessory</div>
+          <div class="grid-2">
+            <div>
+              <label class="form-label">Accessory</label>
+              {% if form.accessory %}
+                <div>
+                  {{ form.accessory }}
+                  <div class="invalid-feedback d-block">{{ form.accessory.errors }}</div>
+                </div>
+              {% else %}
+                <select id="id_accessory_select" name="accessory" class="form-select">
+                  <option value="">-- select accessory --</option>
+                </select>
+              {% endif %}
+              <div class="small-note mt-1">Select accessory from inventory. The unit price will be shown beside it.</div>
+            </div>
+
+            <div>
+              <label class="form-label">Price / unit (INR)</label>
+              <div class="input-group">
+                <input id="id_accessory_unit_price_display" class="form-control" type="text" readonly value="0.00" aria-label="Accessory unit price">
+                <input type="hidden" id="id_accessory_unit_price" name="accessory_unit_price" value="{{ form.initial.accessory_unit_price|default:'0.00' }}">
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2 mt-3">
+            <div>
+              <label class="form-label">Quantity</label>
+              <div class="accessory-qty-group">
+                {% if form.accessory_quantity %}
+                  {{ form.accessory_quantity }}
+                  <div class="invalid-feedback d-block">{{ form.accessory_quantity.errors }}</div>
+                {% else %}
+                  <input id="id_accessory_quantity" name="accessory_quantity" class="form-control" type="number" value="0" min="0" step="1">
+                {% endif %}
+                <button id="btn_add_accessory_qty" type="button" class="btn btn-outline-secondary">+</button>
+              </div>
+              <div class="small-note mt-1">Click + to increase quantity by 1 (updates line total automatically).</div>
+            </div>
+
+            <div>
+              <label class="form-label">Line Total (INR)</label>
+              <input id="id_accessory_line_total_display" class="form-control" type="text" readonly value="0.00">
+              <input type="hidden" id="id_accessory_line_total" name="accessory_line_total" value="{{ form.initial.accessory_line_total|default:'0.00' }}">
+              <div class="small-note mt-1">Stock available:</div>
+              <input id="id_accessory_stock_display" class="form-control mt-1" type="text" readonly value="0.000">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Shipping (other)</div>
+          <div class="grid-3">
+            <div>
+              <label class="form-label">Shipping Cost US (USD)</label>
+              {% if form.shipping_cost_us %}
+                {{ form.shipping_cost_us }}
+                <div class="invalid-feedback d-block">{{ form.shipping_cost_us.errors }}</div>
+              {% else %}
+                <input id="id_shipping_cost_us" name="shipping_cost_us" class="form-control" type="number" step="0.01" min="0" value="0.00">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">Shipping Cost Europe (EUR)</label>
+              {% if form.shipping_cost_europe %}
+                {{ form.shipping_cost_europe }}
+                <div class="invalid-feedback d-block">{{ form.shipping_cost_europe.errors }}</div>
+              {% else %}
+                <input id="id_shipping_cost_europe" name="shipping_cost_europe" class="form-control" type="number" step="0.01" min="0" value="0.00">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">(Optional) Notes</label>
+              <input id="id_shipping_notes" class="form-control" type="text" name="shipping_notes" value="">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Auto-filled Costing Fields</div>
+          
+          <div class="grid-3">
+            <div>
+              <label class="form-label">GF (%)</label>
+              <input id="id_gf_percent_display" class="form-control" type="text" readonly value="0.0000">
+              <input type="hidden" name="gf_percent" id="id_gf_percent" value="{{ form.initial.gf_percent|default:'0.0000' }}">
+            </div>
+            <div>
+              <label class="form-label">Texas Buying (%)</label>
+              <input id="id_texas_buying_percent_display" class="form-control" type="text" readonly value="0.0000">
+              <input type="hidden" name="texas_buying_percent" id="id_texas_buying_percent" value="{{ form.initial.texas_buying_percent|default:'0.0000' }}">
+            </div>
+            <div>
+              <label class="form-label">Texas Retail (%)</label>
+              <input id="id_texas_retail_percent_display" class="form-control" type="text" readonly value="0.0000">
+              <input type="hidden" name="texas_retail_percent" id="id_texas_retail_percent" value="{{ form.initial.texas_retail_percent|default:'0.0000' }}">
+            </div>
+          </div>
+          <div class="grid-3 mt-3">
+            <div>
+              <label class="form-label">Shipping (INR)</label>
+              <input id="id_shipping_inr_display" class="form-control" type="text" readonly value="0.00">
+              <input type="hidden" name="shipping_inr" id="id_shipping_inr" value="{{ form.initial.shipping_inr|default:'0.00' }}">
+            </div>
+            <div>
+              <label class="form-label">TX → US (%)</label>
+              <input id="id_tx_to_us_percent_display" class="form-control" type="text" readonly value="0.0000">
+              <input type="hidden" name="tx_to_us_percent" id="id_tx_to_us_percent" value="{{ form.initial.tx_to_us_percent|default:'0.0000' }}">
+            </div>
+            <div>
+              <label class="form-label">Import (%)</label>
+              <input id="id_import_percent_display" class="form-control" type="text" readonly value="0.0000">
+              <input type="hidden" name="import_percent" id="id_import_percent" value="{{ form.initial.import_percent|default:'0.0000' }}">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Derived Costs (auto-filled)</div>
+          <div class="grid-3">
+            <div>
+              <label class="form-label">GF Overhead Cost</label>
+              {% if form.gf_overhead_cost %}
+                {{ form.gf_overhead_cost }}
+              {% else %}
+                <input id="id_gf_overhead_cost" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+            <div>
+              <label class="form-label">Texas Buying Cost</label>
+              {% if form.texas_buying_cost %}
+                {{ form.texas_buying_cost }}
+              {% else %}
+                <input id="id_texas_buying_cost" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+            <div>
+              <label class="form-label">Texas Retail</label>
+              {% if form.texas_retail %}
+                {{ form.texas_retail }}
+              {% else %}
+                <input id="id_texas_retail" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+          </div>
+          <div class="grid-3 mt-3">
+            <div>
+              <label class="form-label">Texas → US Selling Cost</label>
+              {% if form.texas_us_selling_cost %}
+                {{ form.texas_us_selling_cost }}
+              {% else %}
+                <input id="id_texas_us_selling_cost" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+            <div>
+              <label class="form-label">US Buying Cost (USD)</label>
+              {% if form.us_buying_cost_usd %}
+                {{ form.us_buying_cost_usd }}
+              {% else %}
+                <input id="id_us_buying_cost_usd" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+            <div>
+              <label class="form-label">US Wholesale Cost</label>
+              {% if form.us_wholesale_cost %}
+                {{ form.us_wholesale_cost }}
+              {% else %}
+                <input id="id_us_wholesale_cost" class="form-control" type="text" readonly value="0.0000">
+              {% endif %}
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="costing-fieldset compact">
+          <div class="costing-legend small mb-2">Stitch / Finish / Packaging (interface)</div>
+          <div class="grid-3 mt-3">
+            <div>
+              <label class="form-label">Stitching (INR)</label>
+              {% if form.stitching %}
+                {{ form.stitching }}
+                <div class="invalid-feedback d-block">{{ form.stitching.errors }}</div>
+              {% else %}
+                <input id="id_new_stitching" name="stitching" class="form-control" type="text" value="0.00">
+              {% endif %}
+              <div class="small-note mt-1">Auto-filled from selected size (if available).</div>
+            </div>
+
+            <div>
+              <label class="form-label">Finishing (INR)</label>
+              {% if form.finishing %}
+                {{ form.finishing }}
+                <div class="invalid-feedback d-block">{{ form.finishing.errors }}</div>
+              {% else %}
+                <input id="id_new_finishing" name="finishing" class="form-control" type="text" value="0.00">
+              {% endif %}
+            </div>
+
+            <div>
+              <label class="form-label">Packaging (INR)</label>
+              {% if form.packaging %}
+                {{ form.packaging }}
+                <div class="invalid-feedback d-block">{{ form.packaging.errors }}</div>
+              {% else %}
+                <input id="id_new_packaging" name="packaging" class="form-control" type="text" value="0.00">
+              {% endif %}
+            </div>
+          </div>
+          <div class="mt-2">
+            <small class="text-muted">Note: these Stitch / Finish / Packaging fields are interface-only by default. They will POST with the form (names match model fields if present).</small>
+          </div>
+        </fieldset>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save Costing Sheet</button>
+          <a class="btn btn-outline-secondary" href="{% url 'costing_sheet:list' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script id="costing-master" type="application/json">
+{% if costing_master_json %}
+{{ costing_master_json|safe }}
+{% else %}
+{"categories": [], "sizes_by_category": {}, "components": {}}
+{% endif %}
+</script>
+
+<script id="server-categories" type="application/json">
+{{ categories|safe }}
+</script>
+
+<script>
+(function(){
+  try {
+    function restoreServerCats(){
+      try {
+        var sel = document.getElementById('id_category_select') || document.querySelector('select[name="category"]');
+        if (!sel) return;
+
+        var serverEl = document.getElementById('server-categories');
+        if (!serverEl) return;
+
+        var txt = serverEl.textContent || serverEl.innerText || "{}";
+        var serverCats = [];
+        try { serverCats = JSON.parse(txt || "[]"); } catch(e){ serverCats = []; }
+
+        if (!Array.isArray(serverCats) || serverCats.length === 0) return;
+
+        var placeholderIndex = -1;
+        if (sel.options.length && sel.options[0].value === '') placeholderIndex = 0;
+
+        for (var i = sel.options.length - 1; i >= 0; i--) {
+          if (i === placeholderIndex) continue;
+          sel.remove(i);
+        }
+
+        serverCats.forEach(function(c){
+          try {
+            var opt = document.createElement('option');
+            opt.value = (c.id === null || c.id === undefined) ? '' : String(c.id);
+            opt.text = (c.name || c.title || c.label || '');
+            sel.appendChild(opt);
+          } catch(err) { }
+        });
+
+        try {
+          var initial = sel.getAttribute('data-initial') || '';
+          if (initial) {
+            for (var j=0;j<sel.options.length;j++){
+              if (String(sel.options[j].value) === String(initial)) { sel.selectedIndex = j; break; }
+            }
+          }
+        } catch(e){}
+
+        try {
+          var ev;
+          try { ev = new Event('change', { bubbles: true }); } catch(e) { ev = document.createEvent('HTMLEvents'); ev.initEvent('change', true, false); }
+          sel.dispatchEvent(ev);
+        } catch(e){}
+
+      } catch (err) {
+        console && console.warn && console.warn('restoreServerCats error', err);
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', restoreServerCats);
+    } else {
+      setTimeout(restoreServerCats, 0);
+    }
+  } catch(e){
+    console && console.warn && console.warn('restoreServerCats init failed', e);
+  }
+})();
+</script>
+
+<script id="costing-config" type="application/json">
+{
+  "ajax_category_details": "{% url 'costing_sheet:ajax_get_category_details' %}",
+  "ajax_component_details": "{% url 'costing_sheet:ajax_get_component_details' %}",
+  "ajax_accessories": "{% url 'costing_sheet:ajax_list_accessories' %}",
+  "ajax_accessory_detail": "{% url 'costing_sheet:ajax_get_accessory_detail' pk=0 %}",
+  "ajax_accessories_bulk": "{% url 'costing_sheet:ajax_accessories_bulk' %}",
+  "ajax_compute_accessory_line": "{% url 'costing_sheet:ajax_compute_accessory_line' %}",
+  "ajax_compute_sku": "{% url 'costing_sheet:ajax_compute_sku' %}"
+}
+</script>
+
+<script>
+/* Auto-fill GF/Taxes from CategoryMaster */
+(function(){
+  function readConfig(){
+    try {
+      var cfgEl = document.getElementById('costing-config');
+      if(!cfgEl) return null;
+      var txt = cfgEl.textContent || cfgEl.innerText || "{}";
+      return JSON.parse(txt);
+    } catch(e) { return null; }
+  }
+  var cfg = readConfig() || {};
+  var AJAX_CATEGORY_DETAILS = cfg.ajax_category_details || '/costing/ajax/category-details/';
+
+  var SELECTOR = '#id_category_select';
+  var WAIT_TIMEOUT_MS = 9000;
+  var POLL_INTERVAL_MS = 150;
+
+  var MAP = {
+    gf_percent: ['#id_gf_percent', '#id_gf_percent_display'],
+    texas_buying_percent: ['#id_texas_buying_percent', '#id_texas_buying_percent_display'],
+    texas_retail_percent: ['#id_texas_retail_percent', '#id_texas_retail_percent_display'],
+    shipping_inr: ['#id_shipping_inr', '#id_shipping_inr_display'],
+    tx_to_us_percent: ['#id_tx_to_us_percent', '#id_tx_to_us_percent_display'],
+    import_percent: ['#id_import_percent', '#id_import_percent_display']
+  };
+
+  function setField(selector, value){
+    try {
+      var el = document.querySelector(selector);
+      if(!el) return;
+      if('value' in el){
+        el.value = (value === null || value === undefined) ? '' : value;
+        el.dispatchEvent(new Event('input',{bubbles:true}));
+        el.dispatchEvent(new Event('change',{bubbles:true}));
+      } else {
+        el.textContent = (value === null || value === undefined) ? '' : value;
+      }
+    } catch(e) { }
+  }
+
+  async function fetchAndFill(catId){
+    if(!catId){
+      Object.keys(MAP).forEach(function(k){
+        var ids = MAP[k];
+        setField(ids[0], '');
+        setField(ids[1], '');
+      });
+      return;
+    }
+    try {
+      var url = AJAX_CATEGORY_DETAILS;
+      if(url.indexOf('?') === -1){
+        if(url.slice(-1) !== '/') url = url + '/';
+        url = url.replace('//', '/');
+        url = url + '?category_id=' + encodeURIComponent(catId);
+      } else {
+        url = url + '&category_id=' + encodeURIComponent(catId);
+      }
+
+      var r = await fetch(url, { credentials: 'same-origin' });
+      if(!r.ok){ return; }
+      var j = await r.json().catch(function(){ return null; });
+      var comp = (j && j.components && j.components[0]) ? j.components[0] : (j && j.category ? j.category : null);
+      if(!comp) return;
+
+      Object.keys(MAP).forEach(function(k){
+        var ids = MAP[k];
+        var v = comp[k];
+        if(v === undefined || v === null){
+          if(k === 'gf_percent') v = comp.gf_overhead || comp.gf;
+          if(k === 'texas_buying_percent') v = comp.texas_buying_cost || comp.texas_buying;
+          if(k === 'texas_retail_percent') v = comp.texas_retail || comp.texas_retail_percent;
+          if(k === 'shipping_inr') v = comp.shipping_cost_inr || comp.shipping_inr;
+          if(k === 'tx_to_us_percent') v = comp.texas_to_us_selling_cost || comp.tx_to_us_percent;
+          if(k === 'import_percent') v = comp.import_cost || comp.import_percent;
+        }
+        setField(ids[0], v);
+        setField(ids[1], v);
+      });
+      try { if(typeof computeAll === 'function') computeAll(); } catch(e) {}
+    } catch(e){}
+  }
+
+  function wireSelect(selectEl){
+    if(!selectEl) return;
+    if(selectEl.__costing_wired) return;
+    selectEl.__costing_wired = true;
+
+    selectEl.addEventListener('change', function(e){
+      fetchAndFill(e.target.value);
+    });
+
+    if(selectEl.value && String(selectEl.value).trim()){
+      fetchAndFill(selectEl.value);
+      return true;
+    }
+    return false;
+  }
+
+  function waitForSelectAndWire(){
+    var start = Date.now();
+    var timer = setInterval(function(){
+      var sel = document.querySelector(SELECTOR) || document.querySelector('select[name="category"]') || document.getElementById('id_category_select');
+      if(sel){
+        var did = wireSelect(sel);
+        var hasOptions = sel.options && sel.options.length > 1;
+        var hasValue = sel.value && String(sel.value).trim();
+        if(did || hasOptions || hasValue){
+          clearInterval(timer);
+          return;
+        }
+      }
+      if(Date.now() - start > WAIT_TIMEOUT_MS){
+        clearInterval(timer);
+        var sel2 = document.querySelector(SELECTOR) || document.querySelector('select[name="category"]') || document.getElementById('id_category_select');
+        if(sel2) wireSelect(sel2);
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', waitForSelectAndWire);
+  } else {
+    setTimeout(waitForSelectAndWire, 0);
+  }
+})();
+</script>
+
+<script>
+(function(){
+  try {
+    if (window.CostingSheet && window.CostingSheet.__initialized) return;
+    var already = Array.from(document.getElementsByTagName('script')).some(function(s){
+      try { return s.src && s.src.indexOf('costing.js') !== -1; } catch (e) { return false; }
+    });
+    if (already) {
+      window.CostingSheet = window.CostingSheet || {};
+      window.CostingSheet.__initialized = true;
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = "{% static 'costing_sheet/costing.js' %}?v=2"; // Added a cache-buster
+    s.defer = true;
+    s.onload = function(){ window.CostingSheet = window.CostingSheet || {}; window.CostingSheet.__initialized = true; };
+    document.head.appendChild(s);
+  } catch (e) {}
+})();
+</script>
+
+<script>
+(function(){
+  function toDecimal(v){ var n = parseFloat(v); return isNaN(n) ? 0 : n; }
+  function pctToMul(p){ return 1 + (toDecimal(p) / 100.0); }
+
+  function getInputVal(id){
+    var el = document.getElementById(id);
+    if(!el) return 0;
+    var v = el.value;
+    return toDecimal(v);
+  }
+
+  function setVal(id, v, fixed){
+    var el = document.getElementById(id);
+    if(!el) return;
+    if(typeof fixed === "number"){
+      el.value = isFinite(v) ? Number(v).toFixed(fixed) : "0.0000";
+    } else {
+      el.value = (v === null || v === undefined) ? "" : v;
+    }
+  }
+
+  function updateTotalLabelText(){
+    var sel = document.getElementById('id_total_basis');
+    var label = document.getElementById('total_label_text');
+    if(!label || !sel) return;
+    if(sel.value === 'price_per_sqft'){
+      label.textContent = "(Price / sq.ft × Average)";
+    } else {
+      label.textContent = "(Final Cost × Average)";
+    }
+  }
+
+  window.computeAll = function(){
+    try {
+      // Base costing values
+      var final_cost = getInputVal("id_final_cost");
+      var price_per_sqft = getInputVal("id_price_per_sqft");
+      var avg = getInputVal("id_average");
+
+      // Determine basis (Final Cost vs Price per sq.ft)
+      var basisEl = document.getElementById('id_total_basis');
+      var basis = basisEl ? String(basisEl.value) : 'final_cost';
+
+      var total_basis_value = (basis === 'price_per_sqft') ? price_per_sqft : final_cost;
+      var total = total_basis_value * avg;
+      setVal("id_total", total, 4);
+
+      // Update label text (in case selector changed externally)
+      updateTotalLabelText();
+
+      // Accessory line total
+      var accessory_line = getInputVal("id_accessory_line_total");
+
+      // Stitching / Finishing / Packaging (interface fields)
+      var stitching = getInputVal("id_new_stitching");
+      var finishing = getInputVal("id_new_finishing");
+      var packaging = getInputVal("id_new_packaging");
+
+      // Effective final price BEFORE overheads:
+      // Costing (total) + Stitching + Finishing + Packaging + Accessory Line Total
+      var effective_final_price = total + stitching + finishing + packaging + accessory_line;
+
+      // Set New Final Price to this effective value (as requested)
+      setVal("id_new_final_price", effective_final_price, 4);
+
+      // Read percentages (can come from hidden fields or display fields)
+      var gf_percent = getInputVal("id_gf_percent") || getInputVal("id_gf_percent_display");
+      var texas_buying_percent = getInputVal("id_texas_buying_percent") || getInputVal("id_texas_buying_percent_display");
+      var texas_retail_percent = getInputVal("id_texas_retail_percent") || getInputVal("id_texas_retail_percent_display");
+      var tx_to_us_percent = getInputVal("id_tx_to_us_percent") || getInputVal("id_tx_to_us_percent_display");
+      var import_percent = getInputVal("id_import_percent") || getInputVal("id_import_percent_display");
+      var new_tariff_percent = getInputVal("id_new_tariff_percent") || getInputVal("id_new_tariff_percent_display");
+      var recip_tariff_percent = getInputVal("id_recip_tariff_percent") || getInputVal("id_recip_tariff_percent_display");
+      var ship_us_percent = getInputVal("id_ship_us_percent") || getInputVal("id_ship_us_percent_display");
+      var us_wholesale = getInputVal("id_us_wholesale") || getInputVal("id_us_wholesale_display");
+
+      var shipping_inr = getInputVal("id_shipping_cost_india") || getInputVal("id_shipping_inr_display") || getInputVal("id_shipping_inr");
+      var shipping_us = getInputVal("id_shipping_cost_us") || getInputVal("id_shipping_cost_us_display");
+      var shipping_eu = getInputVal("id_shipping_cost_europe") || getInputVal("id_shipping_cost_europe_display");
+
+      // GF Overhead is applied on effective_final_price now
+      var gf_overhead = effective_final_price * pctToMul(gf_percent);
+      setVal("id_gf_overhead_cost", gf_overhead, 4);
+
+      // Downstream calculations remain the same but use gf_overhead (which is derived from effective_final_price)
+      var texas_buying = gf_overhead * pctToMul(texas_buying_percent);
+      setVal("id_texas_buying_cost", texas_buying, 4);
+
+      var texas_retail = (texas_buying * pctToMul(texas_retail_percent)) + shipping_inr;
+      setVal("id_texas_retail", texas_retail, 4);
+
+      var texas_us_selling = texas_buying * pctToMul(tx_to_us_percent);
+      setVal("id_texas_us_selling_cost", texas_us_selling, 4);
+
+      var partA = texas_us_selling * pctToMul(import_percent) * pctToMul(new_tariff_percent) * pctToMul(recip_tariff_percent);
+      var partB = (texas_us_selling * pctToMul(ship_us_percent)) / 80.0;
+      var us_buying = partA + partB;
+      setVal("id_us_buying_cost_usd", us_buying, 4);
+
+      var us_wholesale_cost = (us_buying * pctToMul(us_wholesale)) / 0.85;
+      setVal("id_us_wholesale_cost", isFinite(us_wholesale_cost) ? us_wholesale_cost : 0, 4);
+    } catch(e) {
+      console.warn("computeAll() failed", e);
+    }
+  };
+
+  var idsToWatch = [
+    "id_average", "id_final_cost", "id_price_per_sqft", "id_total_basis",
+    "id_shipping_cost_india", "id_shipping_cost_us", "id_shipping_cost_europe",
+    "id_gf_percent", "id_gf_percent_display",
+    "id_texas_buying_percent", "id_texas_buying_percent_display",
+    "id_texas_retail_percent", "id_texas_retail_percent_display",
+    "id_tx_to_us_percent", "id_tx_to_us_percent_display",
+    "id_import_percent", "id_import_percent_display",
+    "id_new_tariff_percent", "id_new_tariff_percent_display",
+    "id_recip_tariff_percent", "id_recip_tariff_percent_display",
+    "id_ship_us_percent", "id_ship_us_percent_display",
+    "id_us_wholesale", "id_us_wholesale_display",
+    "id_accessory_line_total",
+    "id_new_stitching", "id_new_finishing", "id_new_packaging",
+    "id_accessory_unit_price", "id_accessory_quantity" // accessory inputs
+  ];
+
+  function attachListeners(){
+    idsToWatch.forEach(function(i){
+      var el = document.getElementById(i);
+      if(el){
+        el.addEventListener("input", computeAll);
+        el.addEventListener("change", computeAll);
+      }
+    });
+
+    var btn = document.getElementById("btn_add_accessory_qty");
+    if(btn){
+      btn.addEventListener("click", function(){
+        var qtyEl = document.getElementById("id_accessory_quantity");
+        if(qtyEl){
+          var n = parseInt(qtyEl.value) || 0;
+          qtyEl.value = n + 1;
+          var ev = new Event('change', { bubbles: true });
+          qtyEl.dispatchEvent(ev);
+        }
+      });
+    }
+
+    var accUnitEl = document.getElementById("id_accessory_unit_price");
+    var accQtyEl = document.getElementById("id_accessory_quantity");
+    
+    function updateAccessoryLine(){
+      var up = toDecimal(accUnitEl ? accUnitEl.value : 0);
+      var q = parseInt(accQtyEl ? accQtyEl.value : 0) || 0;
+      var line = up * q;
+      
+      var disp = document.getElementById("id_accessory_line_total_display");
+      if(disp) disp.value = isFinite(line) ? line.toFixed(2) : "0.00";
+      
+      var hiddenLine = document.getElementById("id_accessory_line_total");
+      if(hiddenLine) {
+        hiddenLine.value = isFinite(line) ? line.toFixed(2) : "0.00";
+        hiddenLine.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    
+    if(accUnitEl) accUnitEl.addEventListener("input", updateAccessoryLine);
+    if(accQtyEl) {
+      accQtyEl.addEventListener("input", updateAccessoryLine);
+      accQtyEl.addEventListener("change", updateAccessoryLine);
+    }
+
+    ["id_new_stitching","id_new_finishing","id_new_packaging"].forEach(function(sid){
+      var sEl = document.getElementById(sid);
+      if(sEl){
+        sEl.addEventListener("input", computeAll);
+        sEl.addEventListener("change", computeAll);
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function(){
+    attachListeners();
+    // Ensure label matches the selector initial value
+    updateTotalLabelText();
+    computeAll();
+    setTimeout(computeAll, 250); // Rerun after JS populates
+    setTimeout(computeAll, 1000); // Rerun again
+  });
+})();
+</script>
+
+<script>
+(function(){
+  function readConfig(){
+    try {
+      var cfgEl = document.getElementById('costing-config');
+      if(!cfgEl) return null;
+      var txt = cfgEl.textContent || cfgEl.innerText || "{}";
+      return JSON.parse(txt);
+    } catch(e) { return null; }
+  }
+  var cfg = readConfig() || {};
+  var AJAX_COMPUTE_SKU = cfg.ajax_compute_sku || '/costing_sheet/ajax_compute_sku/';
+
+  var catSel, nameEl, collectionEl, colorEl, sizeSel, skuEl;
+
+  function $(id){ return document.getElementById(id); }
+
+  function getSelectedText(sel){
+    if(!sel) return '';
+    var idx = sel.selectedIndex;
+    if(idx < 0) return '';
+    return (sel.options[idx] && sel.options[idx].text) ? sel.options[idx].text.trim() : '';
+  }
+
+  function getSizeLabel(){
+    var label = getSelectedText(sizeSel);
+    // Strip the " — 100.00" part if it exists
+    if (label.indexOf(' —') > -1) {
+      label = label.split(' —')[0].trim();
+    }
+    return label || '';
+  }
+
+  let t = null;
+  function debounce(fn, wait){
+    return function(){
+      var args = arguments;
+      clearTimeout(t);
+      t = setTimeout(function(){ fn.apply(null, args); }, wait);
+    };
+  }
+
+  async function computeSku(){
+    try{
+      if(!skuEl) return;
+
+      var category_id = (catSel && catSel.value) ? catSel.value : '';
+      var category_label = getSelectedText(catSel); 
+      var nameVal = (nameEl && nameEl.value) ? nameEl.value : '';
+      var collectionVal = (collectionEl && collectionEl.value) ? collectionEl.value : '';
+      var colorVal = (colorEl && colorEl.value) ? colorEl.value : '';
+      var sizeVal = getSizeLabel();
+
+      if(!(category_id || category_label) || !nameVal || !collectionVal || !colorVal || !sizeVal){
+        skuEl.value = '';
+        return;
+      }
+
+      var params = new URLSearchParams();
+      if(category_id) params.append('category_id', category_id);
+      if(category_label) params.append('category_label', category_label);
+      params.append('name', nameVal);
+      params.append('collection', collectionVal);
+      params.append('color', colorVal);
+      params.append('size', sizeVal);
+
+      var url = AJAX_COMPUTE_SKU;
+      if(url.indexOf('?') === -1){
+        if(url.slice(-1) !== '/') url = url + '/';
+        url = url.replace('//', '/');
+        url = url + '?' + params.toString();
+      } else {
+        url = url + '&' + params.toString();
+      }
+
+      var r = await fetch(url, { credentials: 'same-origin' });
+      if(!r.ok) { return; }
+      var j = await r.json().catch(function(){ return {}; });
+      if(j && typeof j.sku === 'string'){
+        skuEl.value = j.sku || '';
+      }
+    }catch(e){}
+  }
+
+  var computeSkuDebounced = debounce(computeSku, 250);
+
+  function wire(){
+    catSel = $('id_category_select') || document.querySelector('select[name="category"]');
+    nameEl = $('id_name');
+    collectionEl = $('id_collection');
+    colorEl = $('id_color');
+    sizeSel = $('id_size_master_select');
+    skuEl = $('id_sku');
+
+    if(catSel) catSel.addEventListener('change', computeSkuDebounced);
+    if(nameEl) { nameEl.addEventListener('input', computeSkuDebounced); nameEl.addEventListener('change', computeSkuDebounced); }
+    if(collectionEl) { collectionEl.addEventListener('input', computeSkuDebounced); collectionEl.addEventListener('change', computeSkuDebounced); }
+    if(colorEl) { colorEl.addEventListener('input', computeSkuDebounced); colorEl.addEventListener('change', computeSkuDebounced); }
+    if(sizeSel) sizeSel.addEventListener('change', computeSkuDebounced);
+
+    computeSkuDebounced();
+    setTimeout(computeSkuDebounced, 600);
+    setTimeout(computeSkuDebounced, 1500);
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', wire);
+  } else {
+    setTimeout(wire, 0);
+  }
+})();
+</script>
+{% endblock %}

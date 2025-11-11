@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Categories{% endblock %}
+
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Category List</h3>
+    <a href="{% url 'category_master_new:category_create' %}" class="btn btn-primary btn-sm">+ Create Category</a>
+  </div>
+
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Sizes (Stitch / Finish / Pack)</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cat in categories %}
+        <tr>
+          <td>{{ cat.name }}</td>
+          <td>
+            {% for s in cat.sizes.all %}
+              <span class="badge bg-light border text-dark me-1">
+                {{ s.name }}
+                {% if s.stitching_cost is not None %} — {{ s.stitching_cost }}{% endif %}
+                {% if s.finishing_cost is not None %} / {{ s.finishing_cost }}{% endif %}
+                {% if s.packaging_cost is not None %} / {{ s.packaging_cost }}{% endif %}
+              </span>
+            {% empty %}
+              <span class="text-muted">No sizes</span>
+            {% endfor %}
+          </td>
+          <td>
+            <a href="{% url 'category_master_new:category_update' pk=cat.pk %}" class="btn btn-sm btn-primary">Edit</a>
+
+            <form method="post" action="{% url 'category_master_new:category_delete' pk=cat.pk %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this category?');">
+                Delete
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

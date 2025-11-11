@@ -1,0 +1,527 @@
+{# templates/base.html #}
+{% load static %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>{% block title %}Live Linen HRMS{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body { min-height: 100vh; background: #ffffff; }
+    .sidebar { min-height: 85vh; }
+    .content-area { padding-top: 1rem; }
+    .nav-link.active { font-weight: 600; }
+    .brand-small { font-size: 0.95rem; }
+    .user-greet { font-size: 0.95rem; color: #333; }
+    .role-badge { font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
+    .notif-bell, .notif-chat { position: relative; display: inline-block; }
+    .badge-unread {
+      position: absolute;
+      top: -6px;
+      right: -8px;
+      font-size: 0.65rem;
+      padding: 0.25rem 0.4rem;
+      transform: translate(0, 0);
+    }
+
+    /* SKU Preview Styling */
+    .sku-box {
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #333;
+      min-height: 38px;
+      transition: background-color 0.3s ease-in-out;
+    }
+    .sku-box.updated { background-color: #e7f1ff; }
+    @keyframes skuFade { from { background-color: #d0e7ff; } to { background-color: #f8f9fa; } }
+    .sku-fade { animation: skuFade 0.7s ease-in-out; }
+
+    /* Section highlight (yellow) */
+    .section-yellow { color: #ffc107; font-weight: 600; }
+    .under-construction-note { font-size: 0.825rem; color: #6c757d; margin: 0.35rem 0 0.5rem 0; display: block; }
+
+    /* Small responsive tweak for sidebar collapse caret spacing */
+    .caret { font-size: 0.85rem; opacity: 0.6; }
+
+    /* Minor styling for small buttons in sidebar */
+    .sidebar .btn-sm { font-size: 0.78rem; padding: 0.28rem 0.5rem; }
+  </style>
+
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
+  <div class="container-fluid">
+    {% if request.user.is_authenticated %}
+      <button class="btn btn-outline-secondary d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#sideMenu" aria-controls="sideMenu">
+        ☰
+      </button>
+    {% endif %}
+
+    {% url 'core:dashboard' as core_dashboard_url %}
+    <a class="navbar-brand brand-small" href="{% if request.user.is_authenticated %}{{ core_dashboard_url|default:'#' }}{% else %}#{% endif %}">Live Linen</a>
+
+    <div class="d-flex align-items-center ms-auto gap-3">
+      {% if user.is_authenticated %}
+        {# safe resolve workorders notifications url #}
+        {% url 'workorders:notifications' as workorders_notifications_url %}
+        <div>
+          <a href="{{ workorders_notifications_url|default:'#' }}" class="text-decoration-none notif-bell" title="Notifications">
+            🔔
+            {% if unread_notifications_count|default:0 %}
+              <span class="badge bg-danger rounded-pill badge-unread">{{ unread_notifications_count }}</span>
+            {% endif %}
+          </a>
+        </div>
+
+        {% url 'chat:room' as chat_room_url %}
+        <div>
+          <a href="{{ chat_room_url|default:'#' }}" class="btn btn-outline-primary btn-sm notif-chat" title="Chat">
+            💬 Chat
+            {% if unread_chat_count|default:0 %}
+              <span class="badge bg-danger rounded-pill badge-unread">{{ unread_chat_count }}</span>
+            {% endif %}
+          </a>
+        </div>
+
+        <div class="me-3 user-greet">
+          Hi {{ user.get_full_name|default:user.username }}
+          {% comment %} use safe permission checks; if perms variable missing, template handles it gracefully {% endcomment %}
+          {% if user.is_superuser or perms.components.add_costcomponent %}
+            <span class="ms-2 badge bg-primary role-badge">Admin</span>
+          {% else %}
+            <span class="ms-2 badge bg-secondary role-badge">Employee</span>
+          {% endif %}
+        </div>
+
+        {% url 'logout' as logout_url %}
+        <div>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ logout_url|default:'#' }}">Logout</a>
+        </div>
+      {% else %}
+        {% url 'login' as login_url %}
+        <a class="btn btn-primary btn-sm" href="{{ login_url|default:'#' }}">Login</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid">
+  <div class="row">
+
+    {% if request.user.is_authenticated %}
+      <nav class="col-lg-2 d-none d-lg-block bg-light sidebar p-3">
+        <ul class="nav flex-column">
+          {% url 'core:dashboard' as core_dashboard_url %}
+          <li class="nav-item mb-2">
+            <a class="nav-link {% if request.path == '/dashboard/' %}active{% endif %}" href="{{ core_dashboard_url|default:'#' }}">Dashboard</a>
+          </li>
+
+          <li class="nav-item"><strong class="px-1">Users</strong></li>
+
+          {% url 'core:create_user' as core_create_user_url %}
+          {% if user.is_superuser or perms.auth.add_user %}
+            {% if core_create_user_url %}
+              <li class="nav-item">
+                <a class="nav-link {% if request.path == '/dashboard/users/create/' %}active{% endif %}" href="{{ core_create_user_url }}">Create User</a>
+              </li>
+            {% endif %}
+          {% endif %}
+
+          {% url 'core:user_list' as core_user_list_url %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.path == '/dashboard/users/' %}active{% endif %}" href="{{ core_user_list_url|default:'#' }}">View Users</a>
+          </li>
+
+          <li class="nav-item mt-3"><strong class="px-1">Vendors</strong></li>
+          {% url 'vendors:create' as vendors_create_url %}
+          {% if user.is_superuser or perms.vendors.add_vendor %}
+            <li class="nav-item">
+              <a class="nav-link {% if request.path|slice:'0:8' == '/vendors' %}active{% endif %}" href="{{ vendors_create_url|default:'#' }}">Create Vendor</a>
+            </li>
+          {% endif %}
+          {% url 'vendors:list' as vendors_list_url %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.path == '/vendors/' %}active{% endif %}" href="{{ vendors_list_url|default:'#' }}">Vendor List</a>
+          </li>
+
+          <li class="nav-item mt-3"><strong class="px-1">Raw Material</strong></li>
+          {% url 'rawmaterials:inventory' as rm_inventory_url %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.path|slice:'0:13' == '/rawmaterials' %}active{% endif %}" href="{{ rm_inventory_url|default:'#' }}">Inventory</a>
+          </li>
+
+          <li class="nav-item mt-2">
+            <div class="d-flex flex-column gap-1">
+              {% url 'rawmaterials:fabric_create' as fabric_create_url %}
+              {% if user.is_superuser or perms.rawmaterials.add_fabric %}
+                {% if fabric_create_url %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ fabric_create_url }}">Add Fabric</a>
+                {% endif %}
+              {% endif %}
+              {% url 'rawmaterials:accessory_create' as accessory_create_url %}
+              {% if user.is_superuser or perms.rawmaterials.add_accessory %}
+                {% if accessory_create_url %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ accessory_create_url }}">Add Accessory</a>
+                {% endif %}
+              {% endif %}
+              {% url 'rawmaterials:printed_create' as printed_create_url %}
+              {% if user.is_superuser or perms.rawmaterials.add_printed %}
+                {% if printed_create_url %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ printed_create_url }}">Add Printed</a>
+                {% endif %}
+              {% endif %}
+            </div>
+          </li>
+
+          {# ====== NEW: ISSUE MATERIAL SECTION (placed directly below Raw Material) ====== #}
+          <li class="nav-item mt-3"><strong class="px-1">Issue Material</strong></li>
+          {% url 'issue_material:issue_list' as issue_list_url %}
+          <li class="nav-item">
+            <a class="nav-link d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse"
+               href="#issueMaterialSubmenu"
+               role="button"
+               aria-expanded="{% if request.path|slice:'0:14' == '/issue-material' %}true{% else %}false{% endif %}"
+               aria-controls="issueMaterialSubmenu">
+              <span>Issue Orders</span>
+              <span class="caret"></span>
+            </a>
+
+            <div class="collapse {% if request.path|slice:'0:14' == '/issue-material' %}show{% endif %}" id="issueMaterialSubmenu">
+              <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
+                <li>
+                  <a class="nav-link ms-2 {% if request.path == '/issue-material/' %}active{% endif %}" href="{{ issue_list_url|default:'#' }}">
+                    View Issues
+                  </a>
+                </li>
+
+                {% url 'issue_material:create_issue' as issue_create_url %}
+                {% if issue_create_url %}
+                  {% if user.is_superuser or perms.issue_material.add_issue %}
+                    <li>
+                      <a class="nav-link ms-2 {% if request.path == '/issue-material/create/' %}active{% endif %}" href="{{ issue_create_url }}">Create Issue</a>
+                    </li>
+                  {% endif %}
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+          {# ====== END Issue Material Section ====== #}
+
+          <!-- ====== COMPONENT MASTER ====== -->
+          <li class="nav-item mt-3"><strong class="px-1">Component Master</strong></li>
+          {% url 'components:master_list' as components_master_list_url %}
+          <li class="nav-item">
+            <a class="nav-link d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse"
+               href="#componentMasterSubmenu"
+               role="button"
+               aria-expanded="{% if request.path|slice:'0:15' == '/components/master' %}true{% else %}false{% endif %}"
+               aria-controls="componentMasterSubmenu">
+              <span>Manage Components</span>
+              <span class="caret"></span>
+            </a>
+
+            <div class="collapse {% if request.path|slice:'0:15' == '/components/master' %}show{% endif %}" id="componentMasterSubmenu">
+              <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
+                <li>
+                  <a class="nav-link ms-2 {% if request.path == '/components/master/' %}active{% endif %}" href="{{ components_master_list_url|default:'#' }}">
+                    Master List
+                  </a>
+                </li>
+
+                {% url 'components:master_create' as components_master_create_url %}
+                {% if user.is_superuser or perms.components.add_componentmaster or perms.components.add_costcomponent %}
+                  {% if components_master_create_url %}
+                    <li>
+                      <a class="nav-link ms-2 {% if request.path == '/components/master/create/' %}active{% endif %}" href="{{ components_master_create_url }}">
+                        Create Master
+                      </a>
+                    </li>
+                  {% endif %}
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+
+          <!-- ====== CATEGORY MASTER NEW ====== -->
+          <li class="nav-item mt-3"><strong class="px-1">Category Master New</strong></li>
+          {% url 'category_master_new:category_list' as category_master_new_list_url %}
+          <li class="nav-item">
+            <a class="nav-link d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse"
+               href="#categoryMasterNewSubmenu"
+               role="button"
+               aria-expanded="{% if request.path|slice:'0:18' == '/category-master-new' %}true{% else %}false{% endif %}"
+               aria-controls="categoryMasterNewSubmenu">
+              <span>Manage (New)</span>
+              <span class="caret"></span>
+            </a>
+
+            <div class="collapse {% if request.path|slice:'0:18' == '/category-master-new' %}show{% endif %}" id="categoryMasterNewSubmenu">
+              <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
+                <li>
+                  <a class="nav-link ms-2 {% if request.path == '/category-master-new/' %}active{% endif %}" href="{{ category_master_new_list_url|default:'#' }}">
+                    View Categories (New)
+                  </a>
+                </li>
+
+                {% url 'category_master_new:category_create' as category_master_new_create_url %}
+                {% if user.is_superuser or perms.category_master_new.add_category %}
+                  {% if category_master_new_create_url %}
+                    <li>
+                      <a class="nav-link ms-2 {% if request.path == '/category-master-new/create/' %}active{% endif %}" href="{{ category_master_new_create_url }}">
+                        Create Category (New)
+                      </a>
+                    </li>
+                  {% endif %}
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+
+          <!-- ====== CATEGORY MASTER ====== -->
+          <li class="nav-item mt-3"><strong class="px-1">Category Master</strong></li>
+          {% url 'category_master:list' as category_master_list_url %}
+          <li class="nav-item">
+            <a class="nav-link d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse"
+               href="#categoryMasterSubmenu"
+               role="button"
+               aria-expanded="{% if request.path|slice:'0:16' == '/category-master' %}true{% else %}false{% endif %}"
+               aria-controls="categoryMasterSubmenu">
+              <span>Manage Categories</span>
+              <span class="caret"></span>
+            </a>
+
+            <div class="collapse {% if request.path|slice:'0:16' == '/category-master' %}show{% endif %}" id="categoryMasterSubmenu">
+              <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
+                <li>
+                  <a class="nav-link ms-2 {% if request.path == '/category-master/' %}active{% endif %}" href="{{ category_master_list_url|default:'#' }}">
+                    View Category List
+                  </a>
+                </li>
+
+                {% url 'category_master:create' as category_master_create_url %}
+                {% if user.is_superuser or perms.category_master.add_categorymaster %}
+                  {% if category_master_create_url %}
+                    <li>
+                      <a class="nav-link ms-2 {% if request.path == '/category-master/create/' %}active{% endif %}" href="{{ category_master_create_url }}">Create Category</a>
+                    </li>
+                  {% endif %}
+                {% else %}
+                  {% if user.is_superuser and category_master_create_url %}
+                    <li>
+                      <a class="nav-link ms-2 {% if request.path == '/category-master/create/' %}active{% endif %}" href="{{ category_master_create_url }}">Create Category</a>
+                    </li>
+                  {% endif %}
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+
+          <!-- ====== SIZE MASTER ====== -->
+          <li class="nav-item mt-3"><strong class="px-1">Size Master</strong></li>
+          {% url 'size_master:list' as size_master_list_url %}
+          <li class="nav-item">
+            <a class="nav-link d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse"
+               href="#sizeMasterSubmenu"
+               role="button"
+               aria-expanded="{% if request.path|slice:'0:12' == '/size-master' %}true{% else %}false{% endif %}"
+               aria-controls="sizeMasterSubmenu">
+              <span>Manage Sizes</span>
+              <span class="caret"></span>
+            </a>
+
+            <div class="collapse {% if request.path|slice:'0:12' == '/size-master' %}show{% endif %}" id="sizeMasterSubmenu">
+              <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
+                <li>
+                  <a class="nav-link ms-2 {% if request.path == '/size-master/' %}active{% endif %}" href="{{ size_master_list_url|default:'#' }}">
+                    View Size List
+                  </a>
+                </li>
+
+                {% url 'size_master:create' as size_master_create_url %}
+                {% if user.is_superuser or perms.size_master.add_sizemaster %}
+                  {% if size_master_create_url %}
+                    <li>
+                      <a class="nav-link ms-2 {% if request.path == '/size-master/create/' %}active{% endif %}" href="{{ size_master_create_url }}">Create Size</a>
+                    </li>
+                  {% endif %}
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+
+          <!-- ====== COSTING SHEET (NEW) ====== -->
+          <li class="nav-item mt-3"><strong class="px-1">Costing</strong></li>
+          {% url 'costing_sheet:list' as costing_list_url %}
+          {% url 'costing_sheet:create' as costing_create_url %}
+          <li class="nav-item">
+            <a class="nav-link d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse"
+               href="#costingSubmenu"
+               role="button"
+               aria-expanded="{% if request.path|slice:'0:8' == '/costing' %}true{% else %}false{% endif %}"
+               aria-controls="costingSubmenu">
+              <span>Costing Sheets</span>
+              <span class="caret"></span>
+            </a>
+
+            <div class="collapse {% if request.path|slice:'0:8' == '/costing' %}show{% endif %}" id="costingSubmenu">
+              <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
+                <li>
+                  <a class="nav-link ms-2 {% if request.path == '/costing/' %}active{% endif %}" href="{{ costing_list_url|default:'#' }}">View Costing Sheets</a>
+                </li>
+
+                {# avoid parentheses in {% if %} - use nested checks to prevent TemplateSyntaxError #}
+                {% if costing_create_url %}
+                  {% if user.is_superuser or perms.costing_sheet.add_costingsheet %}
+                    <li>
+                      <a class="nav-link ms-2 {% if request.path == '/costing/create/' %}active{% endif %}" href="{{ costing_create_url|default:'#' }}">Create Costing Sheet</a>
+                    </li>
+                  {% endif %}
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+
+          <!-- ====== FINISHED PRODUCTS ====== -->
+          <li class="nav-item mt-3"><strong class="px-1 section-yellow">Finished Products</strong></li>
+          {% url 'finished_products:product_list' as fp_list_url %}
+          <li class="nav-item">
+            <a class="nav-link d-flex justify-content-between align-items-center section-yellow"
+               data-bs-toggle="collapse"
+               href="#finishedProductsSubmenu"
+               role="button"
+               aria-expanded="{% if request.path|slice:'0:17' == '/finished-products' %}true{% else %}false{% endif %}"
+               aria-controls="finishedProductsSubmenu">
+              <span class="section-yellow">Manage Finished</span>
+              <span class="caret"></span>
+            </a>
+
+            <div class="collapse {% if request.path|slice:'0:17' == '/finished-products' %}show{% endif %}" id="finishedProductsSubmenu">
+              <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
+                <li>
+                  <a class="nav-link ms-2 section-yellow {% if request.path|slice:'0:17' == '/finished-products' and request.path != '/finished-products/new/' %}active{% endif %}" href="{{ fp_list_url|default:'#' }}">
+                    Product List
+                  </a>
+                </li>
+                {% url 'finished_products:product_create' as fp_create_url %}
+                {% if user.is_superuser or perms.finished_products.add_finishedproduct %}
+                  {% if fp_create_url %}
+                    <li>
+                      <a class="nav-link ms-2 section-yellow {% if request.path == '/finished-products/new/' %}active{% endif %}" href="{{ fp_create_url }}">Create Product</a>
+                    </li>
+                  {% endif %}
+                {% endif %}
+              </ul>
+            </div>
+          </li>
+
+          <!-- ====== WORK ORDERS ====== -->
+          <li class="nav-item mt-3"><strong class="px-1 section-yellow">Work Orders</strong></li>
+          {% url 'workorders:list' as workorders_list_url %}
+          <li class="nav-item">
+            <a class="nav-link section-yellow {% if request.path|slice:'0:11' == '/workorders' %}active{% endif %}" href="{{ workorders_list_url|default:'#' }}">Work Orders</a>
+          </li>
+
+          {% if user.is_authenticated %}
+            {% url 'dispatch:tracking' as dispatch_list_url %}
+            {% url 'dispatch:new' as dispatch_new_url %}
+            <li class="nav-item mt-3"><strong class="px-1 section-yellow">Dispatch / Delivery</strong></li>
+            <li class="nav-item">
+              <a class="nav-link d-flex justify-content-between align-items-center section-yellow {% if request.path|slice:'0:9' == '/dispatch' %}active{% endif %}" href="{{ dispatch_list_url|default:'#' }}">
+                <span class="section-yellow">Tracking List</span>
+                {% if pending_dispatch_count|default:0 %}
+                  <span class="badge bg-danger rounded-pill ms-2">{{ pending_dispatch_count }}</span>
+                {% endif %}
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link section-yellow {% if request.path|slice:'0:13' == '/dispatch/new' %}active{% endif %}" href="{{ dispatch_new_url|default:'#' }}">Create Dispatch</a>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+    {% endif %}
+
+    <main class="col-lg-10 content-area">
+      <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h4 class="mb-0">{% block page_title %}Live Linen HRMS{% endblock %}</h4>
+          </div>
+        </div>
+
+        {% if messages %}
+          {% for msg in messages %}
+            <div class="alert alert-{{ msg.tags }} alert-dismissible fade show" role="alert">
+              {{ msg }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+{# safe load of dashboard.js if exists; don't crash if missing #}
+<script>
+  (function(){
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '{% static "core/js/dashboard.js" %}');
+    xhr.onload = function(){ if (xhr.status === 200) { var s = document.createElement('script'); s.text = xhr.responseText; document.head.appendChild(s); } };
+    xhr.onerror = function(){ /* ignore missing file */ };
+    xhr.send();
+  })();
+</script>
+
+{# Costing module JS: include only if static file exists; keep as optional include #}
+{% if user.is_authenticated %}
+  <script>
+    (function(){
+      var costingJsUrl = "{% static 'costing_sheet/costing.js' %}";
+      var xhr2 = new XMLHttpRequest();
+      xhr2.open('GET', costingJsUrl);
+      xhr2.onload = function(){ if (xhr2.status === 200) { var s = document.createElement('script'); s.text = xhr2.responseText; document.head.appendChild(s); } };
+      xhr2.onerror = function(){ /* ignore missing costing.js */ };
+      xhr2.send();
+    })();
+  </script>
+{% endif %}
+
+{% block scripts %}{% endblock %}
+{% block extra_js %}{% endblock %}
+
+<!-- SKU fade animation -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const skuBox = document.getElementById("sku-preview");
+  if (skuBox) {
+    const observer = new MutationObserver(() => {
+      skuBox.classList.add("sku-fade");
+      setTimeout(() => skuBox.classList.remove("sku-fade"), 700);
+    });
+    observer.observe(skuBox, { childList: true, subtree: true });
+  }
+});
+</script>
+
+</body>
+</html>

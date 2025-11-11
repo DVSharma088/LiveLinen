@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <body>
+    <p>Hi,</p>
+    <p>Good news — your order (<strong>Dispatch #{{ dispatch.pk }}</strong>) has been dispatched.</p>
+
+    <h4>Dispatch details</h4>
+    <ul>
+      <li><strong>Dispatch ID:</strong> {{ dispatch.pk }}</li>
+      <li><strong>Date:</strong> {{ dispatch.dispatched_at|default:dispatch.created_at }}</li>
+      <li><strong>Tracking:</strong> {% if dispatch.tracking_number %}{{ dispatch.tracking_number }}{% else %}N/A{% endif %}</li>
+    </ul>
+
+    <p>Thank you for shopping with {{ site_name }}.</p>
+    <p>Regards,<br/>{{ site_name }} team</p>
+  </body>
+</html>

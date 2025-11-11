@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Chat — Users{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <h3 class="mb-3">Open Global Chat</h3>
+  <ul class="list-group">
+    {% for u in users %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>@{{ u.username }}</span>
+
+        {# Open global chat and optionally prefill with @username via ?mention=... #}
+        <a href="{% url 'chat:room' %}?mention={{ u.username|urlencode }}" class="btn btn-sm btn-primary">
+          Open Global Chat
+        </a>
+      </li>
+    {% empty %}
+      <li class="list-group-item">No other users found.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

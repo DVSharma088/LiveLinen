@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Create / Edit Category{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm p-3">
+  <h4 class="mb-3">{% if category %}Edit{% else %}Create{% endif %} Category</h4>
+
+  <form method="post" action="">
+    {% csrf_token %}
+
+    <div class="mb-3">
+      {{ form.non_field_errors }}
+      {{ form.name.label_tag }}<br>
+      {{ form.name }}
+      {{ form.name.errors }}
+    </div>
+
+    <hr>
+
+    <h5>Sizes, Stitching, Finishing & Packaging</h5>
+    <p class="small text-muted">
+      Add each size and its related costs. All values are numeric (e.g., 100 or 100.50).
+    </p>
+
+    <!-- Formset management -->
+    {{ formset.management_form }}
+
+    <table class="table table-sm" id="sizes-table">
+      <thead>
+        <tr>
+          <th style="width:25%;">Size</th>
+          <th style="width:25%;">Stitching</th>
+          <th style="width:25%;">Finishing</th>
+          <th style="width:25%;">Packaging</th>
+          <th style="width:10%;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in formset.forms %}
+          <tr class="form-row">
+            <td>{{ f.name.errors }} {{ f.name }}</td>
+            <td>{{ f.stitching_cost.errors }} {{ f.stitching_cost }}</td>
+            <td>{{ f.finishing_cost.errors }} {{ f.finishing_cost }}</td>
+            <td>{{ f.packaging_cost.errors }} {{ f.packaging_cost }}</td>
+            <td>
+              {{ f.order }}
+              {% if formset.can_delete %}
+                <div class="form-check">
+                  {{ f.DELETE }} <label class="form-check-label">Delete</label>
+                </div>
+              {% else %}
+                <button type="button" class="btn btn-sm btn-danger remove-row">Remove</button>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="mb-3">
+      <button type="button" id="add-size" class="btn btn-sm btn-primary">+ Add Size</button>
+    </div>
+
+    <div class="mt-3">
+      <button type="submit" class="btn btn-success">{% if category %}Update{% else %}Create{% endif %} Category</button>
+      <a href="{% url 'category_master_new:category_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<!-- Hidden template for cloning new rows -->
+<div id="empty-form-template" style="display:none;">
+  <table><tbody>
+    <tr class="form-row">
+      <td>{{ formset.empty_form.name.label_tag }} {{ formset.empty_form.name }}</td>
+      <td>{{ formset.empty_form.stitching_cost.label_tag }} {{ formset.empty_form.stitching_cost }}</td>
+      <td>{{ formset.empty_form.finishing_cost.label_tag }} {{ formset.empty_form.finishing_cost }}</td>
+      <td>{{ formset.empty_form.packaging_cost.label_tag }} {{ formset.empty_form.packaging_cost }}</td>
+      <td>
+        {{ formset.empty_form.order }}
+        {% if formset.can_delete %}
+          {{ formset.empty_form.DELETE }}
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-danger remove-row">Remove</button>
+      </td>
+    </tr>
+  </tbody></table>
+</div>
+
+<script>
+(function(){
+  function getTotalFormsEl() {
+    return document.querySelector('input[name="{{ formset.prefix }}-TOTAL_FORMS"]');
+  }
+  function getMaxFormsEl() {
+    return document.querySelector('input[name="{{ formset.prefix }}-MAX_NUM_FORMS"]');
+  }
+
+  const addBtn = document.getElementById('add-size');
+  const tbody = document.querySelector('#sizes-table tbody');
+  const emptyTplContainer = document.getElementById('empty-form-template');
+  const emptyHtml = emptyTplContainer.innerHTML;
+
+  addBtn.addEventListener('click', function() {
+    const totalEl = getTotalFormsEl();
+    let total = parseInt(totalEl.value, 10);
+    const maxEl = getMaxFormsEl();
+    const max = maxEl ? parseInt(maxEl.value, 10) : null;
+    if (max && total >= max) {
+      alert('Cannot add more items.');
+      return;
+    }
+
+    const newHtml = emptyHtml.replace(/__prefix__/g, total);
+    const wrapper = document.createElement('tbody');
+    wrapper.innerHTML = newHtml;
+    const newRow = wrapper.querySelector('tr.form-row');
+    if (!newRow) return;
+    tbody.appendChild(newRow);
+    totalEl.value = total + 1;
+    const firstInput = newRow.querySelector('input, select, textarea');
+    if (firstInput) firstInput.focus();
+  });
+
+  document.querySelector('#sizes-table').addEventListener('click', function(e) {
+    if (e.target && e.target.matches('.remove-row')) {
+      const tr = e.target.closest('tr.form-row');
+      if (!tr) return;
+      const totalEl = getTotalFormsEl();
+      let total = parseInt(totalEl.value, 10);
+      const deleteCheckbox = tr.querySelector('input[type="checkbox"][name$="-DELETE"]');
+      if (deleteCheckbox) {
+        deleteCheckbox.checked = true;
+        tr.style.display = 'none';
+      } else {
+        tr.remove();
+        total = total - 1;
+        totalEl.value = total;
+        reindexFormsetRows();
+      }
+    }
+  });
+
+  function reindexFormsetRows() {
+    const forms = tbody.querySelectorAll('tr.form-row');
+    const totalEl = getTotalFormsEl();
+    forms.forEach(function(row, idx) {
+      const inputs = row.querySelectorAll('input, select, textarea, label');
+      inputs.forEach(function(el) {
+        if (el.name) el.name = el.name.replace(/-\d+-/, '-' + idx + '-');
+        if (el.id) el.id = el.id.replace(/-\d+-/, '-' + idx + '-');
+        if (el.htmlFor) el.htmlFor = el.htmlFor.replace(/-\d+-/, '-' + idx + '-');
+      });
+    });
+    totalEl.value = forms.length;
+  }
+})();
+</script>
+
+{% endblock %}

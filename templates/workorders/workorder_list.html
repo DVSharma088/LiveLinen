@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<h1>Work Orders</h1>
+
+<form id="create-random-form" method="post" action="{% url 'workorders:create_random' %}">
+  {% csrf_token %}
+  <button class="btn btn-primary" type="submit">Simulate Shopify → Create Random Work Order</button>
+</form>
+
+<table class="table">
+  <thead><tr><th>#</th><th>Order ID</th><th>Variant</th><th>Qty</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+    {% for wo in workorders %}
+      <tr>
+        <td>{{ wo.pk }}</td>
+        <td>{{ wo.order_id }}</td>
+        <td>{{ wo.variant_ordered }}</td>
+        <td>{{ wo.quantity_ordered }}</td>
+        <td>{{ wo.get_status_display }}</td>
+        <td><a href="{% url 'workorders:detail' pk=wo.pk %}">Open</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6">No work orders</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

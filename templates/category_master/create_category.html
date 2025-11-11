@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block page_title %}Create Category{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="mb-3">Create Category</h4>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      <!-- Category dropdown -->
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.component.id_for_label }}">Category</label>
+        {{ form.component }}
+        {% if form.component.errors %}
+          <div class="text-danger small">{{ form.component.errors }}</div>
+        {% endif %}
+      </div>
+
+      <hr />
+
+      <!-- Main percentage fields -->
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.gf_overhead.id_for_label }}">GF Overhead (%)</label>
+          {{ form.gf_overhead }}
+          {% if form.gf_overhead.errors %}
+            <div class="text-danger small">{{ form.gf_overhead.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.texas_buying_cost.id_for_label }}">Texas Buying Cost (%)</label>
+          {{ form.texas_buying_cost }}
+          {% if form.texas_buying_cost.errors %}
+            <div class="text-danger small">{{ form.texas_buying_cost.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.texas_retail.id_for_label }}">Texas Retail (%)</label>
+          {{ form.texas_retail }}
+          {% if form.texas_retail.errors %}
+            <div class="text-danger small">{{ form.texas_retail.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row g-3 mt-2">
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.shipping_cost_inr.id_for_label }}">Shipping Cost (INR)</label>
+          {{ form.shipping_cost_inr }}
+          {% if form.shipping_cost_inr.errors %}
+            <div class="text-danger small">{{ form.shipping_cost_inr.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.texas_to_us_selling_cost.id_for_label }}">Texas → US Selling Cost (%)</label>
+          {{ form.texas_to_us_selling_cost }}
+          {% if form.texas_to_us_selling_cost.errors %}
+            <div class="text-danger small">{{ form.texas_to_us_selling_cost.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.import_cost.id_for_label }}">Import (%)</label>
+          {{ form.import_cost }}
+          {% if form.import_cost.errors %}
+            <div class="text-danger small">{{ form.import_cost.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row g-3 mt-2">
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.new_tariff.id_for_label }}">New Tariff (%)</label>
+          {{ form.new_tariff }}
+          {% if form.new_tariff.errors %}
+            <div class="text-danger small">{{ form.new_tariff.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.reciprocal_tariff.id_for_label }}">Reciprocal Tariff (%)</label>
+          {{ form.reciprocal_tariff }}
+          {% if form.reciprocal_tariff.errors %}
+            <div class="text-danger small">{{ form.reciprocal_tariff.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.shipping_us.id_for_label }}">Shipping US (%)</label>
+          {{ form.shipping_us }}
+          {% if form.shipping_us.errors %}
+            <div class="text-danger small">{{ form.shipping_us.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row g-3 mt-2">
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.us_wholesale_margin.id_for_label }}">US Wholesale Margin (%)</label>
+          {{ form.us_wholesale_margin }}
+          {% if form.us_wholesale_margin.errors %}
+            <div class="text-danger small">{{ form.us_wholesale_margin.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <hr class="my-4" />
+
+      <div class="mt-3">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'category_master:list' %}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

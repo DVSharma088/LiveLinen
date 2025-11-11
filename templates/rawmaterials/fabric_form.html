@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block page_title %}
+  {% if fabric %}Edit Fabric{% else %}Create Fabric{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h5 class="card-title mb-3">
+      {% if fabric %}Edit Fabric{% else %}Create Fabric{% endif %}
+    </h5>
+
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        Please fix the errors below.
+      </div>
+    {% endif %}
+
+    <form method="post" class="mt-3">
+      {% csrf_token %}
+      <div class="row g-3">
+        <!-- Item Name -->
+        <div class="col-md-6">
+          <label class="form-label">Item Name</label>
+          {{ form.item_name }}
+          {% if form.item_name.errors %}
+            <div class="text-danger small">{{ form.item_name.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Quality -->
+        <div class="col-md-3">
+          <label class="form-label">Quality</label>
+          {{ form.quality }}
+          {% if form.quality.errors %}
+            <div class="text-danger small">{{ form.quality.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Base Color -->
+        <div class="col-md-3">
+          <label class="form-label">Base Color</label>
+          {{ form.base_color }}
+          {% if form.base_color.errors %}
+            <div class="text-danger small">{{ form.base_color.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Type -->
+        <div class="col-md-4">
+          <label class="form-label">Type</label>
+          {{ form.type }}
+          {% if form.type.errors %}
+            <div class="text-danger small">{{ form.type.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Fabric Width -->
+        <div class="col-md-4">
+          <label class="form-label">Fabric Width</label>
+          {{ form.fabric_width }}
+          {% if form.fabric_width.errors %}
+            <div class="text-danger small">{{ form.fabric_width.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Use In -->
+        <div class="col-md-4">
+          <label class="form-label">Use In</label>
+          {{ form.use_in }}
+          {% if form.use_in.errors %}
+            <div class="text-danger small">{{ form.use_in.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Stock -->
+        <div class="col-md-4">
+          <label class="form-label">Stock (Mtrs)</label>
+          {{ form.stock_in_mtrs }}
+          {% if form.stock_in_mtrs.errors %}
+            <div class="text-danger small">{{ form.stock_in_mtrs.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Cost -->
+        <div class="col-md-4">
+          <label class="form-label">Cost Per Unit</label>
+          {{ form.cost_per_unit }}
+          {% if form.cost_per_unit.errors %}
+            <div class="text-danger small">{{ form.cost_per_unit.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Vendor -->
+        <div class="col-md-4">
+          <label class="form-label">Vendor</label>
+          {{ form.vendor }}
+          {% if form.vendor.errors %}
+            <div class="text-danger small">{{ form.vendor.errors.0 }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-4 d-flex align-items-center gap-2">
+        <button class="btn btn-success px-4" type="submit">Save</button>
+        <a class="btn btn-outline-secondary" href="{% url 'rawmaterials:inventory' %}">Back to Inventory</a>
+
+        {% if fabric and can_delete %}
+          <form method="post" action="{% url 'rawmaterials:inventory_delete' fabric.id %}" class="ms-2">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="btn btn-danger"
+              onclick="return confirm('Are you sure you want to permanently delete this fabric? This will also delete any related printed items.')">
+              Delete
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

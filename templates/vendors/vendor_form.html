@@ -1,0 +1,93 @@
+{# templates/vendors/vendor_form.html #}
+{% extends "base.html" %}
+
+{% block title %}{% if vendor %}Edit Vendor{% else %}Create Vendor{% endif %} - Live Linen{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">{% if vendor %}Edit Vendor{% else %}Create Vendor{% endif %}</h2>
+  <div>
+    <a class="btn btn-secondary" href="{% url 'vendors:list' %}">Back to Vendor List</a>
+  </div>
+</div>
+
+<form method="post" novalidate class="vendor-form">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger">
+      <ul class="mb-0">
+        {% for err in form.non_field_errors %}
+          <li>{{ err }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="row">
+    {% for field in form %}
+      <div class="mb-3 col-md-6">
+        <label class="form-label" for="{{ field.id_for_label }}">
+          {{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}
+        </label>
+
+        {# Render the widget as-is (we will apply Bootstrap classes with JS) #}
+        {{ field }}
+
+        {% if field.help_text %}
+          <div class="form-text">{{ field.help_text }}</div>
+        {% endif %}
+
+        {% if field.errors %}
+          <div class="text-danger small mt-1">
+            {% for err in field.errors %}
+              <div>{{ err }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="mt-3">
+    <button type="submit" class="btn btn-primary">{% if vendor %}Save changes{% else %}Create Vendor{% endif %}</button>
+    <a class="btn btn-outline-secondary ms-2" href="{% url 'vendors:list' %}">Cancel</a>
+  </div>
+</form>
+
+{# Add small JS to apply Bootstrap classes so inputs look consistent without a custom template filter #}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Add Bootstrap form-control class to inputs/selects/textareas inside .vendor-form
+  const container = document.querySelector('.vendor-form');
+  if (!container) return;
+  const selectors = 'input:not([type="checkbox"]):not([type="radio"]), select, textarea';
+  container.querySelectorAll(selectors).forEach(function(el) {
+    // Add class only if not present
+    if (!el.classList.contains('form-control') && !el.classList.contains('form-check-input')) {
+      el.classList.add('form-control');
+    }
+  });
+
+  // For checkbox/radio inputs, ensure they are rendered with the Bootstrap form-check class on parent if needed.
+  container.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(function(el) {
+    // wrap checkbox/radio in a div.form-check if not already wrapped
+    const parent = el.parentElement;
+    if (!parent.classList.contains('form-check')) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-check';
+      parent.insertBefore(wrapper, el);
+      wrapper.appendChild(el);
+      // Move any sibling label (if present) into wrapper
+      const next = el.nextElementSibling;
+      if (next && next.tagName.toLowerCase() === 'label') {
+        wrapper.appendChild(next);
+      }
+    }
+    el.classList.add('form-check-input');
+  });
+});
+</script>
+{% endblock %}
+{% endblock %}

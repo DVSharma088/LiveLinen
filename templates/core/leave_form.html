@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block page_title %}Apply for Leave{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Apply for Leave</h5>
+
+        <form method="post" enctype="multipart/form-data" id="leave-form" class="ajax-form" action="{% url 'core:apply_leave' %}">
+          {% csrf_token %}
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+              {{ form.non_field_errors }}
+            </div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label class="form-label">Leave type</label>
+            {{ form.leave_type }}
+            {% if form.leave_type.errors %}<div class="text-danger small">{{ form.leave_type.errors }}</div>{% endif %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Start date</label>
+              {{ form.start_date }}
+              {% if form.start_date.errors %}<div class="text-danger small">{{ form.start_date.errors }}</div>{% endif %}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">End date</label>
+              {{ form.end_date }}
+              {% if form.end_date.errors %}<div class="text-danger small">{{ form.end_date.errors }}</div>{% endif %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Reason</label>
+            {{ form.reason }}
+            {% if form.reason.errors %}<div class="text-danger small">{{ form.reason.errors }}</div>{% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Attachment (optional)</label>
+            {{ form.attachment }}
+            {% if form.attachment.errors %}<div class="text-danger small">{{ form.attachment.errors }}</div>{% endif %}
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Submit Application</button>
+            <a href="{% url 'core:dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'core/js/dashboard.js' %}"></script>
+{% endblock %}

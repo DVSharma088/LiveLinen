@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3>Delete Component</h3>
+
+  {% if perms.components.delete_costcomponent or user.is_superuser %}
+    <p>Are you sure you want to delete "<strong>{{ object }}</strong>"?</p>
+
+    <form method="post">
+      {% csrf_token %}
+      <button class="btn btn-danger">Yes, delete</button>
+      <a class="btn btn-secondary" href="{% url 'components:list' %}">Cancel</a>
+    </form>
+
+  {% else %}
+    <div class="alert alert-warning mt-3">
+      <h5 class="alert-heading">Permission Denied</h5>
+      <p>You do not have permission to delete this component.</p>
+    </div>
+
+    <a class="btn btn-secondary" href="{% url 'components:list' %}">Back to List</a>
+  {% endif %}
+{% endblock %}

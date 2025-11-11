@@ -1,0 +1,117 @@
+{# templates/issue_forms/issue_list.html #}
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Issue Materials — List{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Issue Materials</h4>
+    <a class="btn btn-primary" href="{% url 'issue_material:create_issue' %}">Create Issue</a>
+  </div>
+
+  {% if object_list %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle">
+        <thead class="table-light">
+          <tr>
+            <th style="width:60px">ID</th>
+            <th>Product / Name</th>
+            <th>Order No</th>
+            <th>Created By</th>
+            <th>Created At</th>
+            <th>Lines (Inventory type • item • qty • stock@issue • source)</th>
+            <th style="width:150px">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for obj in object_list %}
+            <tr>
+              <td class="align-middle">{{ obj.pk }}</td>
+
+              <td class="align-middle">
+                {{ obj.product|default:"--" }}
+              </td>
+
+              <td class="align-middle">
+                {{ obj.order_no|default:"--" }}
+              </td>
+
+              <td class="align-middle">
+                {% if obj.created_by %}
+                  {{ obj.created_by.get_full_name|default:obj.created_by.username }}
+                {% else %}
+                  --
+                {% endif %}
+              </td>
+
+              <td class="align-middle">
+                {% if obj.created_at %}
+                  {{ obj.created_at|date:"Y-m-d H:i" }}
+                {% else %}
+                  --
+                {% endif %}
+              </td>
+
+              <td>
+                {% if obj.lines.all %}
+                  <ul class="mb-0 ps-3">
+                    {% for line in obj.lines.all %}
+                      <li class="mb-1">
+                        <span class="fw-semibold">{{ line.inventory_type|title }}</span>
+                         — {{ line.item_name|default:"(unknown item)" }}
+                        &nbsp;|&nbsp;Qty: <span class="fw-medium">{{ line.qty }}</span>
+                        {% if line.stock_at_issue is not None %}
+                          &nbsp;|&nbsp;Stock@Issue: <small class="text-muted">{{ line.stock_at_issue }}</small>
+                        {% endif %}
+                        {% if line.from_waste %}
+                          &nbsp;<span class="badge bg-secondary ms-2">From waste</span>
+                        {% else %}
+                          &nbsp;<span class="badge bg-success ms-2">Deducted</span>
+                        {% endif %}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <small class="text-muted">— no lines —</small>
+                {% endif %}
+              </td>
+
+              <td class="align-middle">
+                <div class="d-flex gap-1">
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'issue_material:issue_detail' obj.pk %}">View</a>
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'issue_material:issue_edit' obj.pk %}">Edit</a>
+
+                  <form method="post" action="{% url 'issue_material:issue_delete' obj.pk %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+      <nav class="mt-3">
+        <ul class="pagination">
+          {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Prev</a></li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link">Page {{ page_obj.number }} / {{ paginator.num_pages }}</span>
+          </li>
+          {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+    {% endif %}
+
+  {% else %}
+    <div class="alert alert-info">No issues found.</div>
+  {% endif %}
+</div>
+{% endblock %}

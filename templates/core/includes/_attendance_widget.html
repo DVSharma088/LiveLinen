@@ -1,0 +1,32 @@
+{# file: templates/core/includes/_attendance_widget.html #}
+<div class="card mb-3">
+  <div class="card-body">
+    <h5 class="card-title">Attendance</h5>
+
+    {% if today_attendance %}
+      <p class="mb-1">
+        {% if today_attendance.login_time %}
+          <small>Login: {{ today_attendance.login_time|date:"SHORT_DATETIME_FORMAT" }}</small><br>
+        {% endif %}
+        {% if today_attendance.logout_time %}
+          <small>Logout: {{ today_attendance.logout_time|date:"SHORT_DATETIME_FORMAT" }}</small><br>
+        {% endif %}
+        <small>Status: {{ today_attendance.get_status_display }}</small>
+      </p>
+    {% else %}
+      <p class="mb-1"><small>No attendance recorded for today.</small></p>
+    {% endif %}
+
+    <form id="login-time-form" method="post" action="{% url 'core:login_time' %}">
+      {% csrf_token %}
+      <button id="login-time-btn" type="button" class="btn btn-success">
+        {% if today_attendance and today_attendance.login_time and not today_attendance.logout_time %}
+          Logout
+        {% else %}
+          Login
+        {% endif %}
+      </button>
+      <span id="login-time-feedback" class="ms-2 text-muted"></span>
+    </form>
+  </div>
+</div>

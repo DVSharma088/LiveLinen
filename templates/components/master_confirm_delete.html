@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block page_title %}Confirm Delete{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="card shadow-sm mx-auto" style="max-width: 600px;">
+    <div class="card-body text-center">
+      <h4 class="card-title text-danger mb-3">Confirm Deletion</h4>
+      <p class="mb-4">
+        Are you sure you want to permanently delete
+        <strong>{{ object.name|default:"this component" }}</strong>?
+      </p>
+
+      <form method="post" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger px-4">Yes, Delete</button>
+      </form>
+
+      <a href="{% url 'components:master_list' %}" class="btn btn-secondary px-4 ms-2">
+        Cancel
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

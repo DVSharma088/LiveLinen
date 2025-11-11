@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0">Notifications</h2>
+    <p class="text-muted small mb-0">Recent messages about packaging handoffs and acknowledgements.</p>
+  </div>
+
+  <div class="d-flex gap-2">
+    <a href="{% url 'workorders:list' %}" class="btn btn-sm btn-outline-secondary">← Back to Work Orders</a>
+
+    {% comment %}
+      "Mark all as read" is a client-side convenience: it will trigger the same single-item
+      mark-read endpoint for each unread notification. If JS is disabled, the fallback below
+      will display the individual forms that can be submitted manually.
+    {% endcomment %}
+    <button id="mark-all-read-btn" class="btn btn-sm btn-primary">Mark all as read</button>
+  </div>
+</div>
+
+{% if notifications %}
+  <div class="list-group">
+    {% for notif in notifications %}
+      <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {% if not notif.is_read %}bg-light{% endif %}" id="notif-{{ notif.pk }}">
+        <div class="ms-2 me-auto">
+          <div class="fw-semibold mb-1">
+            {{ notif.message|linebreaksbr }}
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <small class="text-muted">
+              From:
+              {% if notif.from_user %}
+                {{ notif.from_user.get_full_name|default:notif.from_user.username }}
+              {% else %}
+                System
+              {% endif %}
+              • {{ notif.created_at|date:"d M Y, H:i" }}
+            </small>
+
+            {% if notif.stage %}
+              <small class="text-muted">• Stage:
+                <a href="{% url 'workorders:detail' pk=notif.stage.work_order.pk %}#stage-row-{{ notif.stage.pk }}">
+                  {{ notif.stage.stage_name }} (WO #{{ notif.stage.work_order.pk }})
+                </a>
+              </small>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 align-items-start">
+          {% if not notif.is_read %}
+            <!-- AJAX-enabled mark-as-read button (JS handles). Fallback uses the hidden form below. -->
+            <button class="btn btn-sm btn-primary js-mark-read-btn" data-notif-id="{{ notif.pk }}">Mark read</button>
+          {% else %}
+            <span class="badge bg-success">Read</span>
+          {% endif %}
+
+          <!-- Non-JS fallback: a tiny form that will mark as read via POST -->
+          <form method="post" action="{% url 'workorders:notification_mark_read' pk=notif.pk %}" class="d-none" id="notif-form-{{ notif.pk }}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'workorders:notifications' %}" />
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="alert alert-info">You have no notifications.</div>
+{% endif %}
+
+
+{# Include the static JS file that handles single-item mark-read clicks +
+   implements "Mark all as read" by triggering each button. #}
+<script src="{% static 'workorders/js/notifications.js' %}"></script>
+
+<script>
+/* Small inline initializer for the "Mark all as read" button.
+   It simply triggers clicks on all unread mark-read buttons. If JS is disabled,
+   users can still use the individual forms/buttons above. */
+(function(){
+  const markAllBtn = document.getElementById('mark-all-read-btn');
+  if (!markAllBtn) return;
+
+  markAllBtn.addEventListener('click', function(ev){
+    ev.preventDefault();
+    // Find all unread mark-read buttons
+    const buttons = Array.from(document.querySelectorAll('.js-mark-read-btn'));
+    if (!buttons.length) {
+      // nothing to do
+      const temp = document.createElement('div');
+      temp.className = 'alert alert-info';
+      temp.textContent = 'No unread notifications found.';
+      document.querySelector('main')?.prepend(temp);
+      setTimeout(()=> temp.remove(), 2500);
+      return;
+    }
+
+    // Disable the master button while processing
+    markAllBtn.disabled = true;
+    markAllBtn.textContent = 'Marking...';
+
+    // Trigger clicks with slight stagger to avoid sending many simultaneous requests
+    buttons.forEach((btn, idx) => {
+      setTimeout(() => {
+        try {
+          btn.click();
+        } catch (e) {
+          // fallback: submit hidden form
+          const nid = btn.dataset.notifId;
+          const form = document.getElementById('notif-form-' + nid);
+          if (form) form.submit();
+        }
+      }, idx * 150);
+    });
+
+    // Re-enable after a short delay (individual handlers will update UI)
+    setTimeout(() => {
+      markAllBtn.disabled = false;
+      markAllBtn.textContent = 'Mark all as read';
+    }, buttons.length * 150 + 1000);
+  });
+})();
+</script>
+
+{% endblock %}

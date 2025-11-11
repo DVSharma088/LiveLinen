@@ -1,0 +1,56 @@
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div></div>
+  {% if can_edit %}
+    <a class="btn btn-primary" href="{% url 'rawmaterials:fabric_create' %}">Add Fabric</a>
+  {% endif %}
+</div>
+
+<table class="table table-striped table-bordered align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>Item Name</th>
+      <th>Quality</th>  {# changed from Quality (%) #}
+      <th>Base Color</th>
+      <th>Type</th>     {# changed from Fabric Type #}
+      <th>Fabric Width</th>
+      <th>Use In</th>
+      <th>Stock (Mtrs)</th>
+      <th>Cost / Unit</th>
+      <th>Vendor</th>
+      <th class="text-center">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in fabrics %}
+      <tr>
+        <td>{{ f.item_name }}</td>
+        <td>{{ f.quality|default:"-" }}</td>
+        <td>{{ f.base_color|default:"-" }}</td>
+        <td>{{ f.type|default:"-" }}</td>  {# renamed field reference #}
+        <td>{{ f.fabric_width|floatformat:2 }}</td>
+        <td>{{ f.use_in|default:"-" }}</td>
+        <td>{{ f.stock_in_mtrs|floatformat:3 }}</td>
+        <td>{{ f.cost_per_unit|floatformat:2 }}</td>
+        <td>{% if f.vendor %}{{ f.vendor.vendor_name }}{% else %}-{% endif %}</td>
+        <td class="text-center">
+          {% if can_edit %}
+            {# You can also add Edit link if desired #}
+            <form method="post" action="{% url 'rawmaterials:inventory_delete' f.pk %}" class="d-inline ms-1">
+              {% csrf_token %}
+              <button
+                type="submit"
+                class="btn btn-sm btn-danger"
+                onclick="return confirm('Are you sure you want to permanently delete this fabric? This will also delete all related printed products.');">
+                Delete
+              </button>
+            </form>
+          {% else %}
+            <span class="text-muted small">No actions</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10" class="text-muted text-center">No fabrics yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

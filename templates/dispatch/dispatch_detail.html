@@ -1,0 +1,69 @@
+{# LiveLinen/dispatch/templates/dispatch/dispatch_detail.html #}
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Dispatch #{{ dispatch.pk }}{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h2 class="mb-0">Dispatch #{{ dispatch.pk }}</h2>
+      <div class="text-muted small">
+        {% if dispatch.created_at %}Created: {{ dispatch.created_at }}{% endif %}
+        {% if dispatch.created_by %} — By: {{ dispatch.created_by.get_full_name|default:dispatch.created_by.username }}{% endif %}
+      </div>
+    </div>
+    <div>
+      <a href="{% url 'dispatch:tracking' %}" class="btn btn-sm btn-outline-secondary">← Back to Tracking</a>
+      {% if dispatch.workorder %}
+        <a href="{% url 'workorders:detail' pk=dispatch.workorder.pk %}" class="btn btn-sm btn-outline-primary ms-2">View Workorder</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Dispatch ID</dt>
+        <dd class="col-sm-9">{{ dispatch.pk }}</dd>
+
+        <dt class="col-sm-3">Associated Workorder</dt>
+        <dd class="col-sm-9">
+          {% if dispatch.workorder %}
+            #{{ dispatch.workorder.pk }} — {{ dispatch.workorder.order_id|default:"(no order_id)" }}
+          {% else %}
+            <span class="text-muted">Not linked</span>
+          {% endif %}
+        </dd>
+
+        <dt class="col-sm-3">Product / Item</dt>
+        <dd class="col-sm-9">
+          {% if dispatch.product %}
+            {{ dispatch.product }}
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </dd>
+
+        <dt class="col-sm-3">Quantity</dt>
+        <dd class="col-sm-9">
+          {% if dispatch.quantity %}{{ dispatch.quantity }}{% else %}<span class="text-muted">—</span>{% endif %}
+        </dd>
+
+        <dt class="col-sm-3">Attachment</dt>
+        <dd class="col-sm-9">
+          {% if dispatch.image %}
+            <a href="{{ dispatch.image.url }}" target="_blank">View file</a>
+          {% else %}
+            <span class="text-muted">No attachment</span>
+          {% endif %}
+        </dd>
+      </dl>
+    </div>
+  </div>
+
+  <div>
+    <a class="btn btn-secondary" href="{% url 'dispatch:tracking' %}">Back to list</a>
+  </div>
+</div>
+{% endblock %}

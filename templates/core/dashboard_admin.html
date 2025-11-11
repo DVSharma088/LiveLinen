@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block page_title %}Dashboard — Admin / CEO{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-6">
+    <!-- Admin quick stats -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Admin Overview</h5>
+        <p>Welcome, <strong>{{ user.get_full_name|default:user.username }}</strong></p>
+        <p><strong>Pending leaves:</strong> {{ pending_leaves_count }}</p>
+        <div class="btn-group" role="group" aria-label="admin quick actions">
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'core:leave_list' %}?status=pending">Review Leaves</a>
+          <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:user_list' %}">User Management</a>
+          <a class="btn btn-outline-success btn-sm" href="{% url 'core:delegation_create' %}">Create Delegation</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <!-- Delegations list (all) -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Delegations (recent)</h5>
+        {% if delegations %}
+          <ul class="list-unstyled">
+            {% for d in delegations %}
+              <li>
+                <strong>{{ d.title }}</strong>
+                <small>— {{ d.created_by.get_full_name|default:d.created_by.username }}</small>
+                <div><small>{{ d.start_date }}{% if d.end_date %} — {{ d.end_date }}{% endif %}</small></div>
+                <div>{{ d.description|truncatechars:160 }}</div>
+                <div class="mt-1"><a href="{% url 'core:delegation_list' %}" class="small">View all</a></div>
+              </li>
+              <hr class="my-2"/>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No delegations created yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Leave approvals (recent pending) -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Leave Approvals</h5>
+        <p>Review and approve or reject pending leave applications.</p>
+        <a class="btn btn-primary btn-sm" href="{% url 'core:leave_list' %}?status=pending">View Pending Leaves</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'core/js/dashboard.js' %}"></script>
+{% endblock %}

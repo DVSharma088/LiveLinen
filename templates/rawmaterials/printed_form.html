@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block page_title %}{% if printed %}Edit Printed{% else %}Create Printed{% endif %}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title mb-3">{% if printed %}Edit Printed{% else %}Create Printed{% endif %}</h5>
+
+    {# Show a single alert if any errors exist #}
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        Please fix the errors below.
+      </div>
+    {% endif %}
+
+    {# Show non-field errors (from Form.clean / model validation) #}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.product.id_for_label }}">Product name</label>
+        {{ form.product }}
+        {% if form.product.errors %}
+          <div class="text-danger small mt-1">{{ form.product.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.fabric.id_for_label }}">Fabric (choose from Fabric Inventory)</label>
+        {{ form.fabric }}
+        {% if form.fabric.errors %}
+          <div class="text-danger small mt-1">{{ form.fabric.errors }}</div>
+        {% endif %}
+        <small class="form-text text-muted">If you leave the fields below blank they will be copied from the selected Fabric on save.</small>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.base_color.id_for_label }}">Base Color</label>
+          {{ form.base_color }}
+          {% if form.base_color.errors %}
+            <div class="text-danger small mt-1">{{ form.base_color.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.product_type.id_for_label }}">Type</label>
+          {{ form.product_type }}
+          {% if form.product_type.errors %}
+            <div class="text-danger small mt-1">{{ form.product_type.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.width.id_for_label }}">Width</label>
+          {{ form.width }}
+          {% if form.width.errors %}
+            <div class="text-danger small mt-1">{{ form.width.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.quality.id_for_label }}">Quality (%)</label>
+          {{ form.quality }}
+          {% if form.quality.errors %}
+            <div class="text-danger small mt-1">{{ form.quality.errors }}</div>
+          {% endif %}
+          <small class="form-text text-muted">Leave blank to inherit from the selected Fabric.</small>
+        </div>
+
+        <div class="col-md-6 mt-2">
+          <label class="form-label" for="{{ form.use_in.id_for_label }}">Use in</label>
+          {{ form.use_in }}
+          {% if form.use_in.errors %}
+            <div class="text-danger small mt-1">{{ form.use_in.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6 mt-2">
+          <label class="form-label" for="{{ form.cost_per_unit.id_for_label }}">Cost Per Unit</label>
+          {{ form.cost_per_unit }}
+          {% if form.cost_per_unit.errors %}
+            <div class="text-danger small mt-1">{{ form.cost_per_unit.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6 mt-2">
+          <label class="form-label" for="{{ form.vendor.id_for_label }}">Vendor</label>
+          {{ form.vendor }}
+          {% if form.vendor.errors %}
+            <div class="text-danger small mt-1">{{ form.vendor.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <hr />
+
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.unit.id_for_label }}">Unit</label>
+          {{ form.unit }}
+          {% if form.unit.errors %}
+            <div class="text-danger small mt-1">{{ form.unit.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.quantity_used.id_for_label }}">Quantity used</label>
+          {{ form.quantity_used }}
+          {% if form.quantity_used.errors %}
+            <div class="text-danger small mt-1">{{ form.quantity_used.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.rate.id_for_label }}">Rate</label>
+          {{ form.rate }}
+          {% if form.rate.errors %}
+            <div class="text-danger small mt-1">{{ form.rate.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="{{ form.stock.id_for_label }}">Stock</label>
+          {{ form.stock }}
+          {% if form.stock.errors %}
+            <div class="text-danger small mt-1">{{ form.stock.errors }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <button class="btn btn-success">Save</button>
+        <a class="btn btn-link" href="{% url 'rawmaterials:printed_list' %}">Back to list</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

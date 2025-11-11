@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Create Category - New{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title">Create Category (New)</h5>
+
+    <form method="post" id="category-form" novalidate>
+      {% csrf_token %}
+      <div class="mb-3">
+        {{ form.name.label_tag }}
+        {{ form.name }}
+        {% if form.name.errors %}
+          <div class="text-danger small">{{ form.name.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        {{ form.description.label_tag }}
+        {{ form.description }}
+      </div>
+
+      <div class="mb-3 row gx-2 align-items-center">
+        <div class="col-auto">
+          {{ form.sizes_count.label_tag }}
+        </div>
+        <div class="col-auto">
+          {{ form.sizes_count }}
+        </div>
+      </div>
+
+      <div id="sizes-container" class="mb-3">
+        <!-- JS will insert size input rows here -->
+      </div>
+
+      <button type="submit" class="btn btn-primary">Create Category</button>
+      <a href="{% url 'category_master_new:category_list' %}" class="btn btn-secondary ms-2">Cancel</a>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const select = document.querySelector('select[name="sizes_count"]');
+  const container = document.getElementById('sizes-container');
+
+  function renderSizeInputs(count) {
+    container.innerHTML = ''; // clear
+    for (let i = 0; i < count; i++) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'mb-2 row align-items-center';
+
+      const col = document.createElement('div');
+      col.className = 'col-sm-6';
+
+      const label = document.createElement('label');
+      label.className = 'form-label';
+      label.textContent = `Size ${i + 1} name`;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = `size_${i}`;
+      input.placeholder = (i===0 ? 'e.g. S' : 'e.g. M');
+      input.className = 'form-control';
+
+      col.appendChild(label);
+      col.appendChild(input);
+      wrapper.appendChild(col);
+      container.appendChild(wrapper);
+    }
+  }
+
+  // initial render using form initial value
+  const initial = parseInt(select.value || '4', 10);
+  renderSizeInputs(initial);
+
+  select.addEventListener('change', function() {
+    const n = parseInt(this.value || '0', 10);
+    renderSizeInputs(n);
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block page_title %}Dashboard — Developer{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-6">
+    <!-- Raw Material card (kept from original) -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Raw Material</h5>
+        <p class="mb-1"><strong>Fabric items:</strong> {{ fabric_count }}</p>
+        <div>
+          <strong>Recent fabrics:</strong>
+          <ul class="list-unstyled">
+            {% for f in fabrics_sample %}
+              <li>{{ f.name }} — {{ f.stock }} {{ f.unit }}{% if f.vendor %} ({{ f.vendor.vendor_name }}){% endif %}</li>
+            {% empty %}
+              <li>No fabrics yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <a class="btn btn-sm btn-primary" href="{% url 'rawmaterials:fabric_list' %}">Manage Fabric</a>
+      </div>
+    </div>
+
+    <!-- Attendance & login -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Attendance</h5>
+        <p>
+          {% if today_attendance %}
+            <small>Login: {{ today_attendance.login_time|date:"SHORT_DATETIME_FORMAT" }}</small><br>
+            {% if today_attendance.logout_time %}
+              <small>Logout: {{ today_attendance.logout_time|date:"SHORT_DATETIME_FORMAT" }}</small><br>
+            {% endif %}
+            <small>Status: {{ today_attendance.get_status_display }}</small>
+          {% else %}
+            <small>No attendance recorded for today.</small>
+          {% endif %}
+        </p>
+        <form id="login-time-form" method="post" action="{% url 'core:login_time' %}">
+          {% csrf_token %}
+          <button id="login-time-btn" type="button" class="btn btn-success">
+            {% if today_attendance and today_attendance.login_time and not today_attendance.logout_time %}
+              Logout
+            {% else %}
+              Login
+            {% endif %}
+          </button>
+          <span id="login-time-feedback" class="ms-2"></span>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <!-- Leave widget -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Leave / Applications</h5>
+        <p>You can apply for leaves and view their status.</p>
+        <a class="btn btn-primary btn-sm" href="{% url 'core:apply_leave' %}">Apply for Leave</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:leave_list' %}">My Leaves</a>
+      </div>
+    </div>
+
+    <!-- Delegations -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Delegations</h5>
+        {% if delegations %}
+          <ul class="list-unstyled">
+            {% for d in delegations %}
+              <li>
+                <strong>{{ d.title }}</strong>
+                <div><small>{{ d.start_date }}{% if d.end_date %} — {{ d.end_date }}{% endif %}</small></div>
+                <div>{{ d.description|truncatechars:120 }}</div>
+              </li>
+              <hr class="my-2"/>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No active delegations assigned to you.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'core/js/dashboard.js' %}"></script>
+{% endblock %}

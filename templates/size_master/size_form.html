@@ -1,0 +1,208 @@
+{# size_master/size_form.html #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Create Size Master{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-8 offset-md-2">
+      <h2>Create Size Master</h2>
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+
+        <!-- Category dropdown -->
+        <div class="mb-3">
+          <label for="{{ form.category.id_for_label }}" class="form-label">Category</label>
+          {{ form.category }}
+          {{ form.category.errors }}
+        </div>
+
+        <!-- Size name -->
+        <div class="mb-3">
+          <label for="{{ form.size.id_for_label }}" class="form-label">Size (name)</label>
+          {{ form.size }}
+          {{ form.size.errors }}
+        </div>
+
+        <!-- Length & Breadth -->
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label for="{{ form.length.id_for_label }}" class="form-label">Length</label>
+            {{ form.length }}
+            {{ form.length.errors }}
+          </div>
+          <div class="col-md-6 mb-3">
+            <label for="{{ form.breadth.id_for_label }}" class="form-label">Breadth</label>
+            {{ form.breadth }}
+            {{ form.breadth.errors }}
+          </div>
+        </div>
+
+        <!-- Auto-calculated SqMT -->
+        <div class="mb-3">
+          <label for="id_sqmt" class="form-label">SqMT</label>
+          {{ form.sqmt }}
+          {{ form.sqmt.errors }}
+        </div>
+
+        <!-- Costing fields -->
+        <div class="row">
+          <div class="col-md-4 mb-3">
+            <label for="{{ form.stitching.id_for_label }}" class="form-label">Stitching</label>
+            {{ form.stitching }}
+            {{ form.stitching.errors }}
+          </div>
+          <div class="col-md-4 mb-3">
+            <label for="{{ form.finishing.id_for_label }}" class="form-label">Finishing</label>
+            {{ form.finishing }}
+            {{ form.finishing.errors }}
+          </div>
+          <div class="col-md-4 mb-3">
+            <label for="{{ form.packaging.id_for_label }}" class="form-label">Packaging</label>
+            {{ form.packaging }}
+            {{ form.packaging.errors }}
+          </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <a href="{% url 'size_master:list' %}" class="btn btn-secondary">Back to list</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Client-side SqMT calculator -->
+<script>
+function calculateSqmt() {
+    const length = parseFloat(document.getElementById("id_length").value) || 0;
+    const breadth = parseFloat(document.getElementById("id_breadth").value) || 0;
+    const sqmt = length * breadth;
+    const sqmtEl = document.getElementById("id_sqmt");
+    if (sqmtEl) {
+        sqmtEl.value = sqmt.toFixed(4);
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    const l = document.getElementById("id_length");
+    const b = document.getElementById("id_breadth");
+
+    if (l) l.addEventListener("input", calculateSqmt);
+    if (b) b.addEventListener("input", calculateSqmt);
+
+    calculateSqmt();
+});
+</script>
+
+<!-- AJAX: Populate Size dropdown when Category changes -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // find the selects (try id first, then name fallback)
+  const categorySelect = document.querySelector("#id_category") || document.querySelector('select[name="category"]');
+  const sizeSelect = document.querySelector("#id_size") || document.querySelector('select[name="size"]');
+
+  if (!categorySelect || !sizeSelect) {
+    console.warn("Category or Size select not found on page.");
+    return;
+  }
+
+  // URL template for AJAX endpoint. Django will render a URL with 0 as placeholder:
+  // e.g. "/size_master/ajax/category-sizes/0/"
+  const sizesUrlTemplate = "{% url 'size_master:ajax_category_sizes' 0 %}";
+
+  function buildUrlForCategory(catId) {
+    // Replace the trailing '/0/' with '/<catId>/'.
+    return sizesUrlTemplate.replace(/\/0\/?$/, `/${catId}/`);
+  }
+
+  function setOptions(options) {
+    // options: array of {name: "..."} (as returned by the view)
+    // clear current options
+    sizeSelect.innerHTML = "";
+
+    // default placeholder option
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = categorySelect.value ? "Select Size" : "Select Category First";
+    placeholder.disabled = false;
+    placeholder.selected = true;
+    sizeSelect.appendChild(placeholder);
+
+    if (!Array.isArray(options) || options.length === 0) {
+      // If there are no sizes, show a disabled message option
+      const noneOpt = document.createElement("option");
+      noneOpt.value = "";
+      noneOpt.textContent = "No sizes available";
+      noneOpt.disabled = true;
+      sizeSelect.appendChild(noneOpt);
+      return;
+    }
+
+    // populate with received sizes
+    options.forEach((s) => {
+      const opt = document.createElement("option");
+      // backend returns objects like {"name": "S"}
+      opt.value = s.name;
+      opt.textContent = s.name;
+      sizeSelect.appendChild(opt);
+    });
+  }
+
+  function fetchAndPopulate(catId) {
+    if (!catId) {
+      setOptions([]);
+      return;
+    }
+
+    const url = buildUrlForCategory(catId);
+
+    // show temporary loading option
+    sizeSelect.innerHTML = "";
+    const loadingOpt = document.createElement("option");
+    loadingOpt.value = "";
+    loadingOpt.textContent = "Loading...";
+    loadingOpt.disabled = true;
+    loadingOpt.selected = true;
+    sizeSelect.appendChild(loadingOpt);
+
+    fetch(url, {credentials: "same-origin"})
+      .then((resp) => {
+        if (!resp.ok) throw new Error("Network response was not OK: " + resp.status);
+        return resp.json();
+      })
+      .then((data) => {
+        setOptions(data);
+      })
+      .catch((err) => {
+        console.error("Error fetching sizes:", err);
+        // show friendly error in select
+        sizeSelect.innerHTML = "";
+        const errorOpt = document.createElement("option");
+        errorOpt.value = "";
+        errorOpt.textContent = "Error loading sizes";
+        errorOpt.disabled = true;
+        errorOpt.selected = true;
+        sizeSelect.appendChild(errorOpt);
+      });
+  }
+
+  // attach change listener
+  categorySelect.addEventListener("change", function (e) {
+    const catId = e.target.value;
+    fetchAndPopulate(catId);
+  });
+
+  // If a category is already selected on load (editing case), fetch sizes
+  if (categorySelect.value) {
+    fetchAndPopulate(categorySelect.value);
+  }
+});
+</script>
+{% endblock %}

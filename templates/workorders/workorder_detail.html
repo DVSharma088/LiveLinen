@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<h2>Work Order #{{ workorder.pk }} — {{ workorder.order_id }}</h2>
+<p>
+  Variant: {{ workorder.variant_ordered }}
+  | Qty: {{ workorder.quantity_ordered }}
+  | Status: {{ workorder.get_status_display }}
+</p>
+
+<div id="workorder-alerts" style="min-height:2.5rem;"></div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Packaging Stages</h3>
+  <div>
+    <a href="{% url 'workorders:notifications' %}" class="btn btn-sm btn-outline-secondary">
+      🔔 Notifications
+      {% if unread_notifications_count %}
+        <span class="badge bg-danger rounded-pill ms-1">{{ unread_notifications_count }}</span>
+      {% endif %}
+    </a>
+  </div>
+</div>
+
+{% if stages.exists %}
+<table class="table">
+  <thead>
+    <tr>
+      <th>Order</th>
+      <th>Stage</th>
+      <th>Assigned To</th>
+      <th>Status</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for stage in stages %}
+      <tr id="stage-row-{{ stage.pk }}" data-stage-id="{{ stage.pk }}">
+        <td>{{ workorder.pk }}</td>
+        <td>{{ stage.stage_name }}</td>
+
+        <td>
+          {% if user.is_superuser or user.is_staff %}
+            <form method="post" action="{% url 'workorders:stage_action' pk=stage.pk %}" style="display:flex;gap:.5rem;align-items:center;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="assign" />
+              <select name="assigned_to" class="form-select form-select-sm" >
+                <option value="">-- Unassigned --</option>
+                {% for emp in employee_choices %}
+                  <option value="{{ emp.pk }}" {% if stage.assigned_to and emp.pk == stage.assigned_to.pk %}selected{% endif %}>
+                    {{ emp.get_full_name|default:emp.username }}
+                  </option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-sm btn-outline-primary" type="submit">Set</button>
+            </form>
+
+            {% if stage.assigned_to %}
+              <div class="small text-muted mt-1">Currently: {{ stage.assigned_to.get_full_name|default:stage.assigned_to.username }}</div>
+            {% endif %}
+          {% else %}
+            {% if stage.assigned_to %}
+              {{ stage.assigned_to.get_full_name|default:stage.assigned_to.username }}
+            {% else %}
+              <span class="text-muted">Unassigned</span>
+            {% endif %}
+          {% endif %}
+        </td>
+
+        <td class="stage-status" id="stage-status-{{ stage.pk }}">
+          {{ stage.get_stage_status_display }}
+          {% if stage.is_delayed %}<span class="text-danger"> (Delayed)</span>{% endif %}
+        </td>
+
+        <td>
+          {% if user.is_superuser or user.is_staff or stage.assigned_to and stage.assigned_to.pk == user.pk %}
+            <form class="stage-action-form d-inline" method="post" action="{% url 'workorders:stage_action' pk=stage.pk %}" data-action="in_progress" data-stage-id="{{ stage.pk }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="in_progress" />
+              <button class="btn btn-sm btn-outline-primary js-action-btn" type="submit" {% if stage.stage_status != 'pending' %}disabled{% endif %}>Start</button>
+            </form>
+
+            {# ========================================================== #}
+            {# Normal Complete button for all stages except last one      #}
+            {# ========================================================== #}
+            {% if not forloop.last %}
+              <form class="stage-action-form d-inline" method="post" enctype="multipart/form-data" action="{% url 'workorders:stage_action' pk=stage.pk %}" data-action="complete" data-stage-id="{{ stage.pk }}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="complete" />
+                <input type="file" name="image" class="js-file-input" style="display:inline-block;vertical-align:middle;margin-left:.5rem;" />
+                <button class="btn btn-sm btn-success js-action-btn" type="submit" {% if stage.stage_status == 'completed' %}disabled{% endif %}>Complete</button>
+              </form>
+
+            {% else %}
+              {# ========================================================== #}
+              {# UPDATED — Redirect to Dispatch create form (GET) so fields are prefilled #}
+              {# We use GET and pass workorder_id so dispatch:new renders a prefilled form #}
+              {# ========================================================== #}
+              <form method="get" action="{% url 'dispatch:new' %}" class="d-inline">
+                <input type="hidden" name="workorder_id" value="{{ workorder.id }}">
+                <button class="btn btn-sm btn-success" type="submit" {% if stage.stage_status == 'completed' %}disabled{% endif %}>
+                  Complete &amp; Proceed to Dispatch
+                </button>
+              </form>
+            {% endif %}
+            {# ========================================================== #}
+
+            <form class="stage-action-form d-inline" method="post" action="{% url 'workorders:stage_action' pk=stage.pk %}" data-action="confirm_received" data-stage-id="{{ stage.pk }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="confirm_received" />
+              <button class="btn btn-sm btn-outline-secondary js-action-btn js-confirm-btn" type="submit" {% if stage.received_confirmed %}disabled{% endif %}>Confirm Received</button>
+            </form>
+          {% else %}
+            <div class="text-muted small">Not assigned to you</div>
+          {% endif %}
+
+          {% if stage.image %}
+            <div class="mt-2"><a href="{{ stage.image.url }}" target="_blank">View image</a></div>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <div class="alert alert-info">
+    No packaging stages are visible to you for this work order.
+    {% if user.is_superuser or user.is_staff %}
+      Use the admin assignment controls above to assign stages to employees.
+    {% endif %}
+  </div>
+{% endif %}
+
+<script src="{% static 'workorders/js/stage_actions.js' %}"></script>
+{% endblock %}

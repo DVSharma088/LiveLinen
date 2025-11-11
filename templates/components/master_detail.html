@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block page_title %}Component Master — {{ component.name|default:"(no name)" }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4>Component Master</h4>
+  <div>
+    <a class="btn btn-outline-secondary" href="{% url 'components:master_list' %}">Back to list</a>
+    {% if can_edit %}
+      <a class="btn btn-primary" href="{% url 'components:master_edit' component.pk %}">Edit</a>
+    {% endif %}
+    {% if can_delete %}
+      <form action="{% url 'components:master_delete' component.pk %}" method="post" style="display:inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Delete</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <dl class="row">
+      <dt class="col-sm-3">Name</dt>
+      <dd class="col-sm-9">{{ component.name|default:"—" }}</dd>
+
+      <dt class="col-sm-3">Inventory Category</dt>
+      <dd class="col-sm-9">{{ component.get_inventory_category_display|default:"—" }}</dd>
+
+      <dt class="col-sm-3">Inventory Item</dt>
+      <dd class="col-sm-9">
+        {% if component.inventory_item %}
+          <div>{{ component.inventory_item }}</div>
+          {% if component.inventory_content_type %}
+            <small class="text-muted">({{ component.inventory_content_type.model_class._meta.verbose_name|default:component.inventory_content_type.model }})</small>
+          {% endif %}
+        {% else %}
+          <em>No inventory link</em>
+        {% endif %}
+      </dd>
+
+      <dt class="col-sm-3">Quality / Variant</dt>
+      <dd class="col-sm-9">{{ component.quality|default:"—" }}</dd>
+
+      <dt class="col-sm-3">Size</dt>
+      <dd class="col-sm-9">{{ component.size|floatformat:2 }}</dd>
+
+      <dt class="col-sm-3">Width</dt>
+      <dd class="col-sm-9">
+        {% if component.width %}
+          {{ component.width|floatformat:2 }}
+          {% if component.width_uom %} {{ component.width_uom }}{% else %} inch{% endif %}
+        {% else %}
+          —
+        {% endif %}
+      </dd>
+
+      <dt class="col-sm-3">Cost per unit</dt>
+      <dd class="col-sm-9">₹ {{ component.cost_per_unit|floatformat:2 }}</dd>
+
+      <dt class="col-sm-3">Logistics %</dt>
+      <dd class="col-sm-9">{{ component.logistics_percent|floatformat:2 }}%</dd>
+
+      <dt class="col-sm-3">Final price per unit</dt>
+      <dd class="col-sm-9">
+        {% if component.final_price_per_unit %}
+          ₹ {{ component.final_price_per_unit|floatformat:2 }}
+        {% elif component.final_price is not None %}
+          ₹ {{ component.final_price|floatformat:2 }}
+        {% else %}
+          —
+        {% endif %}
+      </dd>
+
+      <dt class="col-sm-3">Price per sq. foot</dt>
+      <dd class="col-sm-9">
+        {% if component.price_per_sqfoot %}
+          ₹ {{ component.price_per_sqfoot|floatformat:4 }}
+        {% else %}
+          —
+        {% endif %}
+      </dd>
+
+      <dt class="col-sm-3">Final cost</dt>
+      <dd class="col-sm-9">₹ {{ component.final_cost|floatformat:2 }}</dd>
+
+      <dt class="col-sm-3">Notes</dt>
+      <dd class="col-sm-9">{{ component.notes|linebreaksbr }}</dd>
+
+      <dt class="col-sm-3">Created at</dt>
+      <dd class="col-sm-9">{{ component.created_at|date:"Y-m-d H:i" }}</dd>
+
+      <dt class="col-sm-3">Last updated</dt>
+      <dd class="col-sm-9">{{ component.updated_at|date:"Y-m-d H:i" }}</dd>
+    </dl>
+  </div>
+</div>
+{% endblock %}

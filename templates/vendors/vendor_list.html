@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="d-flex align-items-center justify-content-between">
+  <span>Vendors</span>
+  <span>
+    {% if can_create %}
+      <a class="btn btn-primary me-2" href="{% url 'vendors:create' %}">Create Vendor</a>
+    {% endif %}
+  </span>
+</h2>
+
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Vendor Name</th>
+      <th>Mobile</th>
+      <th>Email</th>
+      <th>Address</th>
+      <th>Item Type</th>
+      <th>Product</th>
+      <th>Rate</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in vendors %}
+      <tr>
+        <td>{{ v.vendor_name }}</td>
+        <td>{{ v.mobile_no }}</td>
+        <td>{{ v.email }}</td>
+        <td>{{ v.address|default:"—" }}</td>
+        <td>{{ v.item_type }}</td>
+        <td>{{ v.product }}</td>
+        <td>{{ v.rate }}</td>
+        <td>
+          {# Edit allowed for Managers & Admins per view logic #}
+          {% if can_edit %}
+            <a class="btn btn-sm btn-primary" href="{% url 'vendors:edit' v.pk %}">Edit</a>
+          {% endif %}
+
+          {# Delete allowed for Admin only (use can_delete flag provided by view) #}
+          {% if can_delete %}
+            <form method="post" action="{% url 'vendors:delete' v.pk %}" class="d-inline ms-1 delete-vendor-form">
+              {% csrf_token %}
+              <button
+                type="submit"
+                class="btn btn-sm btn-danger"
+                onclick="return confirm('Are you sure you want to permanently delete this vendor?');">
+                Delete
+              </button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8">No vendors yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

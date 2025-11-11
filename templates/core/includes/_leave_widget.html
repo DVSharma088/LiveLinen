@@ -1,0 +1,9 @@
+{# file: templates/core/includes/_leave_widget.html #}
+<div class="card mb-3">
+  <div class="card-body">
+    <h5 class="card-title">Leave / Applications</h5>
+    <p class="mb-2">Apply for a leave or view status of your current applications.</p>
+    <a class="btn btn-primary btn-sm" href="{% url 'core:apply_leave' %}">Apply for Leave</a>
+    <a class="btn btn-outline-secondary btn-sm ms-2" href="{% url 'core:leave_list' %}">My Leaves</a>
+  </div>
+</div>

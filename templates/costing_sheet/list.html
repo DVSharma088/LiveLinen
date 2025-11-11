@@ -1,0 +1,243 @@
+{# costing_sheet/templates/costing_sheet/list.html #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Costing Sheets | Live Linen{% endblock %}
+{% block page_title %}Costing Sheets{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">All Costing Sheets</h5>
+    {% if perms.costing_sheet.add_costingsheet or user.is_superuser %}
+      <a href="{% url 'costing_sheet:create' %}" class="btn btn-primary btn-sm">+ New Costing Sheet</a>
+    {% endif %}
+  </div>
+
+  <div class="card-body p-0">
+    {% if sheets %}
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover mb-0 align-middle small">
+          <thead class="table-light">
+            <tr>
+              <th class="text-center" style="width:48px;">#</th>
+              <th>SKU</th>
+              <th>Category</th>
+              <th>Name</th>
+              <th>Collection</th>
+              <th>Color</th>
+              <th>Size</th>
+              <th>Quality</th>
+              <th class="text-end">Width</th>
+              <th class="text-end">Total</th>
+              <th class="text-end">Handwork</th>
+              <th class="text-end">GF Overhead Cost</th>
+              <th class="text-end">Texas Buying Cost</th>
+              <th class="text-end">Texas Retail</th>
+              <th class="text-end">Texas → US Selling Cost</th>
+              <th class="text-end">US Buying Cost (USD)</th>
+              <th class="text-end">US Wholesale Cost</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for sheet in sheets %}
+              <tr>
+                <td class="text-center">{{ forloop.counter }}</td>
+
+                <td>
+                  {% if sheet.sku %}
+                    {{ sheet.sku }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if sheet.category %}
+                    {{ sheet.category.name|default:sheet.category }}
+                  {% elif sheet.category_id %}
+                    {{ sheet.category_id }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if sheet.name %}
+                    {{ sheet.name }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if sheet.collection %}
+                    {{ sheet.collection }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if sheet.color %}
+                    {{ sheet.color }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td>
+                  {# size may be stored as size_master, size_label or size - handle common possibilities #}
+                  {% if sheet.size_master %}
+                    {{ sheet.size_master }}
+                  {% elif sheet.size %}
+                    {{ sheet.size }}
+                  {% elif sheet.size_label %}
+                    {{ sheet.size_label }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td>
+                  {# quality field likely component_master or quality_name; fallback gracefully #}
+                  {% if sheet.component_master %}
+                    {{ sheet.component_master }}
+                  {% elif sheet.quality_name %}
+                    {{ sheet.quality_name }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.width is not None %}
+                    {{ sheet.width|floatformat:2 }}
+                  {% else %}
+                    0.00
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.total is not None %}
+                    {{ sheet.total|floatformat:4 }}
+                  {% else %}
+                    0.0000
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {# handwork may be numeric or text #}
+                  {% if sheet.handwork %}
+                    {{ sheet.handwork }}
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.gf_overhead_cost is not None %}
+                    {{ sheet.gf_overhead_cost|floatformat:4 }}
+                  {% else %}
+                    0.0000
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.texas_buying_cost is not None %}
+                    {{ sheet.texas_buying_cost|floatformat:4 }}
+                  {% else %}
+                    0.0000
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.texas_retail is not None %}
+                    {{ sheet.texas_retail|floatformat:4 }}
+                  {% else %}
+                    0.0000
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.texas_us_selling_cost is not None %}
+                    {{ sheet.texas_us_selling_cost|floatformat:4 }}
+                  {% else %}
+                    0.0000
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.us_buying_cost_usd is not None %}
+                    {{ sheet.us_buying_cost_usd|floatformat:4 }}
+                  {% else %}
+                    0.0000
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if sheet.us_wholesale_cost is not None %}
+                    {{ sheet.us_wholesale_cost|floatformat:4 }}
+                  {% else %}
+                    0.0000
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if is_paginated %}
+        <div class="card-footer">
+          <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item">
+                  <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Previous">
+                    <span aria-hidden="true">&laquo;</span>
+                  </a>
+                </li>
+              {% endif %}
+
+              {% for num in paginator.page_range %}
+                {% if page_obj.number == num %}
+                  <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                {% else %}
+                  <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                {% endif %}
+              {% endfor %}
+
+              {% if page_obj.has_next %}
+                <li class="page-item">
+                  <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Next">
+                    <span aria-hidden="true">&raquo;</span>
+                  </a>
+                </li>
+              {% endif %}
+            </ul>
+          </nav>
+        </div>
+      {% endif %}
+
+    {% else %}
+      <div class="p-4 text-center text-muted">
+        <p class="mb-1">No costing sheets found.</p>
+        {% if perms.costing_sheet.add_costingsheet or user.is_superuser %}
+          <a href="{% url 'costing_sheet:create' %}" class="btn btn-outline-primary btn-sm">Create your first one</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    // Lightweight hook if you'd like to extend list behaviours later
+    console.log("Costing Sheet list (compact columns) loaded.");
+  });
+</script>
+{% endblock %}

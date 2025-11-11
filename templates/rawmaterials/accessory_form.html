@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% load static %}
+{% block page_title %}{{ accessory.item_name|default:"New Accessory" }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">{% if accessory %}Edit Accessory{% else %}Create Accessory{% endif %}</h5>
+    <a href="{% url 'rawmaterials:inventory' %}" class="btn btn-sm btn-secondary">Back to Inventory</a>
+  </div>
+
+  <div class="card-body">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label for="{{ form.item_name.id_for_label }}" class="form-label">Item Name</label>
+          {{ form.item_name }}
+          {% if form.item_name.errors %}
+            <div class="invalid-feedback d-block">{{ form.item_name.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="{{ form.quality.id_for_label }}" class="form-label">Quality (%)</label>
+          {{ form.quality }}
+          {% if form.quality.errors %}
+            <div class="invalid-feedback d-block">{{ form.quality.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label for="{{ form.base_color.id_for_label }}" class="form-label">Base Color</label>
+          {{ form.base_color }}
+          {% if form.base_color.errors %}
+            <div class="invalid-feedback d-block">{{ form.base_color.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label for="{{ form.item_type.id_for_label }}" class="form-label">Type</label>
+          {{ form.item_type }}
+          {% if form.item_type.errors %}
+            <div class="invalid-feedback d-block">{{ form.item_type.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-4">
+          <label for="{{ form.width.id_for_label }}" class="form-label">Width</label>
+          {{ form.width }}
+          {% if form.width.errors %}
+            <div class="invalid-feedback d-block">{{ form.width.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="{{ form.use_in.id_for_label }}" class="form-label">Use in</label>
+          {{ form.use_in }}
+          {% if form.use_in.errors %}
+            <div class="invalid-feedback d-block">{{ form.use_in.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="{{ form.stock.id_for_label }}" class="form-label">Stock</label>
+          {{ form.stock }}
+          {% if form.stock.errors %}
+            <div class="invalid-feedback d-block">{{ form.stock.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="{{ form.cost_per_unit.id_for_label }}" class="form-label">Cost Per Unit</label>
+          {{ form.cost_per_unit }}
+          {% if form.cost_per_unit.errors %}
+            <div class="invalid-feedback d-block">{{ form.cost_per_unit.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="{{ form.vendor.id_for_label }}" class="form-label">Vendor</label>
+          {{ form.vendor }}
+          {% if form.vendor.errors %}
+            <div class="invalid-feedback d-block">{{ form.vendor.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">{% if accessory %}Update{% else %}Create{% endif %}</button>
+        <a href="{% url 'rawmaterials:inventory' %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

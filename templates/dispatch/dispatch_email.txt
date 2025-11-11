@@ -1,0 +1,13 @@
+Hi,
+
+Good news — your order (Dispatch #{{ dispatch.pk }}) has been dispatched.
+
+Dispatch details:
+- Dispatch ID: {{ dispatch.pk }}
+- Date: {{ dispatch.dispatched_at|default:dispatch.created_at }}
+- Tracking: {% if dispatch.tracking_number %}{{ dispatch.tracking_number }}{% else %}N/A{% endif %}
+
+Thank you for shopping with {{ site_name }}.
+
+Regards,
+{{ site_name }} team

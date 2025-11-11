@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Create Dispatch{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h2 class="mb-3">Create Dispatch</h2>
+
+  <form method="post" enctype="multipart/form-data" action="{% url 'dispatch:new' %}">
+    {% csrf_token %}
+    {{ form.work_order }} {# hidden FK field #}
+    {{ form.product_id|default_if_none:"" }} {# optional hidden field if used #}
+
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-light">
+        <strong>Order Details</strong>
+      </div>
+      <div class="card-body row g-3">
+        <div class="col-md-6">
+          <label class="form-label">{{ form.order_no.label }}</label>
+          {{ form.order_no }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">{{ form.product_name.label }}</label>
+          {{ form.product_name }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">{{ form.price.label }}</label>
+          {{ form.price }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">{{ form.quantity.label }}</label>
+          {{ form.quantity }}
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-light">
+        <strong>Dispatch Details</strong>
+      </div>
+      <div class="card-body row g-3">
+        <div class="col-md-6">
+          <label for="{{ form.dispatch_date.id_for_label }}" class="form-label">{{ form.dispatch_date.label }}</label>
+          {{ form.dispatch_date }}
+          {% for err in form.dispatch_date.errors %}
+            <div class="text-danger small">{{ err }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="{{ form.courier_company.id_for_label }}" class="form-label">{{ form.courier_company.label }}</label>
+          {{ form.courier_company }}
+          {% for err in form.courier_company.errors %}
+            <div class="text-danger small">{{ err }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-md-6">
+          <label for="{{ form.tracking_number.id_for_label }}" class="form-label">{{ form.tracking_number.label }}</label>
+          {{ form.tracking_number }}
+          {% for err in form.tracking_number.errors %}
+            <div class="text-danger small">{{ err }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-md-12">
+          <label for="{{ form.remarks.id_for_label }}" class="form-label">{{ form.remarks.label }}</label>
+          {{ form.remarks }}
+          {% for err in form.remarks.errors %}
+            <div class="text-danger small">{{ err }}</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Create Dispatch</button>
+      {% if workorder_id %}
+        <a href="{% url 'workorders:detail' pk=workorder_id %}" class="btn btn-outline-secondary">Back to Work Order</a>
+      {% else %}
+        <a href="{% url 'dispatch:tracking' %}" class="btn btn-outline-secondary">Back to List</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<script>
+  // Autofocus the first editable input (dispatch_date)
+  (function() {
+    const fld = document.querySelector('input[name="dispatch_date"]');
+    if (fld) fld.focus();
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block page_title %}Component Masters{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4>Component Masters</h4>
+  <div>
+    {% if can_create %}
+      <a class="btn btn-primary" href="{% url 'components:master_create' %}">Create Component Master</a>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="{% url 'components:list' %}">Back to Cost Components</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    {% if components %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Category</th>
+              <th>Name / Item</th>
+              <th>Quality</th>
+              <th class="text-end">Size</th>
+              <th class="text-end">Width</th>
+              <th class="text-end">Unit Cost</th>
+              <th class="text-end">Logistics %</th>
+              <th class="text-end">Final Price / unit</th>
+              <th class="text-end">Price / sq.ft</th>
+              <th class="text-end">Final Cost</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in components %}
+              <tr>
+                <td>{{ forloop.counter }}</td>
+
+                <td>
+                  {% if c.inventory_category %}
+                    {{ c.inventory_category|title }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td>
+                  <strong>{{ c }}</strong>
+                  <small class="text-muted">
+                    {% if c.inventory_item %}
+                      {{ c.inventory_item }}
+                    {% else %}
+                      <em>No inventory link</em>
+                    {% endif %}
+                  </small>
+                </td>
+
+                <td>{{ c.quality|default:"—" }}</td>
+
+                <td class="text-end">{{ c.size|floatformat:2 }}</td>
+
+                <td class="text-end">
+                  {% if c.width %}
+                    {{ c.width|floatformat:2 }} {% if c.width_uom %}{{ c.width_uom }}{% else %}inch{% endif %}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td class="text-end">₹ {{ c.cost_per_unit|floatformat:2 }}</td>
+
+                <td class="text-end">{{ c.logistics_percent|floatformat:2 }}%</td>
+
+                <td class="text-end text-success fw-bold">
+                  {# Prefer annotated final_price (from queryset); fall back to model field final_price_per_unit if available #}
+                  {% if c.final_price is not None %}
+                    ₹ {{ c.final_price|floatformat:2 }}
+                  {% elif c.final_price_per_unit is not None %}
+                    ₹ {{ c.final_price_per_unit|floatformat:2 }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  {% if c.price_per_sqfoot %}
+                    ₹ {{ c.price_per_sqfoot|floatformat:4 }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td class="text-end">₹ {{ c.final_cost|floatformat:2 }}</td>
+
+                <td>{{ c.created_at|date:"Y-m-d H:i" }}</td>
+
+                <td class="text-nowrap">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'components:master_detail' c.pk %}">View</a>
+                  {% if can_edit %}
+                    <a class="btn btn-sm btn-outline-secondary" href="{% url 'components:master_edit' c.pk %}">Edit</a>
+                  {% endif %}
+                  {% if can_delete %}
+                    <form action="{% url 'components:master_delete' c.pk %}" method="post" style="display:inline;">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete" aria-label="Delete">
+                        Delete
+                      </button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="p-3">
+        {% if is_paginated %}
+          <nav aria-label="Page navigation">
+            <ul class="pagination mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item">
+                  <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                </li>
+              {% else %}
+                <li class="page-item disabled"><span class="page-link">Previous</span></li>
+              {% endif %}
+
+              <li class="page-item disabled">
+                <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+              </li>
+
+              {% if page_obj.has_next %}
+                <li class="page-item">
+                  <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                </li>
+              {% else %}
+                <li class="page-item disabled"><span class="page-link">Next</span></li>
+              {% endif %}
+            </ul>
+          </nav>
+        {% endif %}
+      </div>
+
+    {% else %}
+      <div class="p-4 text-center text-muted">
+        No component masters found.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
