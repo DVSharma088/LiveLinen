@@ -1,0 +1,40 @@
+﻿# Local env / secrets
+.env
+*.env
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+db.sqlite3
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Django static / media build output
+staticfiles/
+media/
+
+# Log files
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node / frontend (if any)
+node_modules/
+dist/
+build/
+
+# Backup files
+*~ 
+*.bak
