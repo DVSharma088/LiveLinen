@@ -37,6 +37,7 @@
               <th class="text-end">Texas → US Selling Cost</th>
               <th class="text-end">US Buying Cost (USD)</th>
               <th class="text-end">US Wholesale Cost</th>
+              <th class="text-center" style="width:90px;">Actions</th>
             </tr>
           </thead>
 
@@ -88,7 +89,6 @@
                 </td>
 
                 <td>
-                  {# size may be stored as size_master, size_label or size - handle common possibilities #}
                   {% if sheet.size_master %}
                     {{ sheet.size_master }}
                   {% elif sheet.size %}
@@ -101,7 +101,6 @@
                 </td>
 
                 <td>
-                  {# quality field likely component_master or quality_name; fallback gracefully #}
                   {% if sheet.component_master %}
                     {{ sheet.component_master }}
                   {% elif sheet.quality_name %}
@@ -128,7 +127,6 @@
                 </td>
 
                 <td class="text-end">
-                  {# handwork may be numeric or text #}
                   {% if sheet.handwork %}
                     {{ sheet.handwork }}
                   {% else %}
@@ -183,6 +181,13 @@
                     0.0000
                   {% endif %}
                 </td>
+
+                <!-- ✅ DELETE BUTTON -->
+                <td class="text-center">
+                  <a href="{% url 'costing_sheet:delete' sheet.id %}" class="btn btn-sm btn-danger">
+                    Delete
+                  </a>
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -236,8 +241,7 @@
 {% block extra_js %}
 <script>
   document.addEventListener("DOMContentLoaded", function() {
-    // Lightweight hook if you'd like to extend list behaviours later
-    console.log("Costing Sheet list (compact columns) loaded.");
+    console.log("Costing Sheet list loaded with delete feature.");
   });
 </script>
 {% endblock %}

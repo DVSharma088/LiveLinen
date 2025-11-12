@@ -1,7 +1,9 @@
+# category_master/views.py
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, ListView, UpdateView, View
 from django.contrib import messages
 from django.shortcuts import redirect, get_object_or_404
+from django.db.models.deletion import ProtectedError
 
 from .models import CategoryMaster, CategoryMasterNew
 from .forms import CategoryMasterForm
@@ -116,10 +118,58 @@ class CategoryMasterListView(ListView):
 
 
 class CategoryMasterDeleteView(View):
-    """Instant delete view — deletes and redirects to list with success message."""
+    """
+    Attempt to delete the CategoryMaster instance. If deletion is blocked by a ProtectedError
+    (e.g. CostingSheet rows reference this CategoryMaster with on_delete=PROTECT),
+    catch it and show a clear message listing example blocking CostingSheet rows and total count.
 
+    This avoids a traceback and lets the user know what to reassign/delete first.
+    """
     def post(self, request, pk):
         category = get_object_or_404(CategoryMaster, pk=pk)
-        category.delete()
-        messages.success(request, "Category deleted successfully!")
-        return redirect("category_master:list")
+
+        try:
+            # attempt actual delete
+            category.delete()
+            messages.success(request, "Category deleted successfully!")
+            return redirect("category_master:list")
+
+        except ProtectedError as e:
+            # Try to import CostingSheet lazily to avoid circular import issues.
+            blocking_objs = []
+            total_blockers = 0
+            try:
+                # adjust import path if your costing app uses a different module name
+                from costing_sheet.models import CostingSheet
+
+                blocking_qs = CostingSheet.objects.filter(category=category)
+                total_blockers = blocking_qs.count()
+                # Limit the sample list to avoid huge messages
+                for cs in blocking_qs[:20]:
+                    blocking_objs.append(str(cs))
+
+            except Exception:
+                # If import fails or query fails, fall back to ProtectedError.protected_objects
+                protected = getattr(e, "protected_objects", None) or []
+                total_blockers = len(protected)
+                for o in protected[:20]:
+                    try:
+                        blocking_objs.append(str(o))
+                    except Exception:
+                        # fallback to repr if __str__ blows up
+                        blocking_objs.append(repr(o))
+
+            # Compose friendly message
+            if total_blockers == 0:
+                msg = "Category could not be deleted because related protected objects exist."
+            else:
+                sample_list = ", ".join(blocking_objs)
+                more = "" if total_blockers <= len(blocking_objs) else f" (+{total_blockers - len(blocking_objs)} more)"
+                msg = (
+                    f"Cannot delete this category because {total_blockers} CostingSheet(s) reference it. "
+                    f"Examples: {sample_list}{more}. "
+                    "Please reassign or delete those CostingSheet entries before deleting this category."
+                )
+
+            messages.error(request, msg)
+            return redirect("category_master:list")

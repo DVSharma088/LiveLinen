@@ -2,7 +2,6 @@
 from datetime import timedelta
 import logging
 import uuid
-import time
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -14,6 +13,7 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 from django.db import transaction
+from django.template import TemplateDoesNotExist
 
 from .forms import CreateUserForm, AttendanceForm, LeaveApplicationForm, DelegationForm
 from .models import Attendance, LeaveApplication, Delegation
@@ -212,6 +212,9 @@ def dashboard(request):
       - 'core/dashboard_admin.html' for Admin
       - 'core/dashboard_manager.html' for Manager
       - 'core/dashboard_employee.html' for Employee (default)
+
+    If a role-specific template is missing, fall back to the employee dashboard
+    to avoid a TemplateDoesNotExist 500.
     """
     # Common metrics
     fabric_count = Fabric.objects.count()
@@ -231,7 +234,11 @@ def dashboard(request):
     if is_admin(request.user):
         delegations_qs = Delegation.objects.all().order_by("-created_at")[:10]
     else:
-        delegations_qs = request.user.delegations.filter(active=True).order_by("-created_at")[:10]
+        # be defensive: allow both `request.user.delegations` related_name or filter by assignees
+        try:
+            delegations_qs = request.user.delegations.filter(active=True).order_by("-created_at")[:10]
+        except Exception:
+            delegations_qs = Delegation.objects.filter(assignees=request.user, active=True).order_by("-created_at")[:10]
 
     context = {
         "fabric_count": fabric_count,
@@ -249,7 +256,12 @@ def dashboard(request):
     else:
         template = "core/dashboard_employee.html"
 
-    return render(request, template, context)
+    # Render with fallback if template missing
+    try:
+        return render(request, template, context)
+    except TemplateDoesNotExist:
+        logger.warning("Dashboard template %s not found; falling back to employee dashboard for user=%s", template, request.user.username)
+        return render(request, "core/dashboard_employee.html", context)
 
 
 @login_required
@@ -464,7 +476,11 @@ def delegation_list(request):
     if is_admin(request.user):
         qs = Delegation.objects.order_by("-created_at")
     else:
-        qs = request.user.delegations.order_by("-created_at")
+        # be defensive about relationship presence
+        try:
+            qs = request.user.delegations.order_by("-created_at")
+        except Exception:
+            qs = Delegation.objects.filter(assignees=request.user).order_by("-created_at")
 
     delegations = qs[:200]
     return render(request, "core/delegation_list.html", {"delegations": delegations})

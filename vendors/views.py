@@ -4,45 +4,34 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.urls import reverse
 from django.views.decorators.http import require_POST
-from django.db.models.deletion import ProtectedError
+from django.apps import apps
 
 from .models import Vendor
 from .forms import VendorForm
 
 
-# ----------------- role helpers (local to this module) -----------------
+# ----------------- role helpers -----------------
 def _in_group(user, group_name):
     return user.groups.filter(name=group_name).exists()
 
 
 def is_admin(user):
-    """Admin = superuser OR group 'Admin'."""
     return user.is_superuser or _in_group(user, "Admin")
 
 
 def can_create_vendor(user):
-    """
-    Per spec: Admin, Manager and Employee can create vendors.
-    """
     if user.is_superuser:
         return True
     return user.groups.filter(name__in=["Admin", "Manager", "Employee"]).exists()
 
 
 def can_edit_vendor(user):
-    """
-    Allow Admin and Manager to edit vendor records.
-    Employees can create vendors but not edit existing ones (safer default).
-    """
     if user.is_superuser:
         return True
     return user.groups.filter(name__in=["Admin", "Manager"]).exists()
 
 
 def can_delete_vendor(user):
-    """
-    Only Admin may delete vendors (prevent accidental data loss).
-    """
     return is_admin(user)
 
 
@@ -64,7 +53,6 @@ def vendor_create(request):
 @login_required
 def vendor_list(request):
     vendors = Vendor.objects.all().order_by("-created_at")
-    # compute permission flags for the current user and pass to template
     can_edit = request.user.is_superuser or request.user.groups.filter(name__in=["Admin", "Manager"]).exists()
     can_create = request.user.is_superuser or request.user.groups.filter(name__in=["Admin", "Manager", "Employee"]).exists()
     can_delete = request.user.is_superuser or request.user.groups.filter(name="Admin").exists()
@@ -101,50 +89,53 @@ def vendor_edit(request, pk):
 @require_POST
 def vendor_delete(request, pk):
     """
-    Attempt to delete a vendor. If deletion is blocked by PROTECT foreign keys,
-    catch ProtectedError and inform the user about the related objects.
+    Robust hard-delete:
+    1. Find all reverse relations (one-to-many, many-to-many) that point to Vendor.
+    2. Delete child rows via the related model's queryset (so DB constraints won't block vendor deletion).
+    3. Delete the vendor.
+    This intentionally performs permanent deletion of related rows.
     """
     vendor = get_object_or_404(Vendor, pk=pk)
     vendor_name = getattr(vendor, "vendor_name", str(pk))
 
     try:
+        # Iterate all model fields for reverse relations created by Django
+        for rel in vendor._meta.get_fields():
+            # target reverse relations only (auto_created & not concrete)
+            if getattr(rel, "auto_created", False) and not getattr(rel, "concrete", False):
+                # Attempt to get the related model (the child model)
+                related_model = getattr(rel, "related_model", None) or getattr(rel, "model", None)
+                # rel.field holds the FK field on the related model that points to Vendor (for reverse relations)
+                fk_field = getattr(rel, "field", None)
+
+                if related_model is None:
+                    # fallback: try to resolve via apps if rel.related_model is a string (rare)
+                    try:
+                        related_model = apps.get_model(rel.related_model)
+                    except Exception:
+                        related_model = None
+
+                if related_model is None or fk_field is None:
+                    # skip if we can't determine how to filter children
+                    continue
+
+                # Build filter kwargs to select children that reference this vendor
+                # fk_field.name gives the field name on the child model (e.g., 'vendor')
+                filter_kwargs = {fk_field.name: vendor}
+
+                try:
+                    # Delete children via queryset (this issues SQL DELETE on child rows)
+                    related_model.objects.filter(**filter_kwargs).delete()
+                except Exception:
+                    # be permissive: ignore errors on specific relations and continue with others
+                    # We do this because the goal is a hard delete; we'll attempt vendor.delete() at the end regardless.
+                    pass
+
+        # After attempting to remove dependent rows, delete the vendor itself
         vendor.delete()
         messages.success(request, f"Vendor '{vendor_name}' deleted successfully.")
-    except ProtectedError as e:
-        # e.protected_objects may be provided (depending on Django version)
-        protected_objs = getattr(e, "protected_objects", None)
-        if protected_objs is None:
-            # Fallback: try to extract from exception args if available
-            protected_objs = e.args[1] if len(e.args) > 1 else []
-
-        # Format a friendly list of blocking records
-        blocked_list = []
-        try:
-            for obj in protected_objs:
-                # Use verbose_name and str(obj) to create a readable description
-                meta_name = getattr(obj._meta, "verbose_name", None)
-                if meta_name:
-                    blocked_list.append(f"{meta_name.title()}: {str(obj)}")
-                else:
-                    blocked_list.append(str(obj))
-        except Exception:
-            # On any unexpected shape, fallback to repr of protected objects
-            blocked_list = [str(x) for x in protected_objs]
-
-        if blocked_list:
-            msg = (
-                f"Cannot delete vendor '{vendor_name}' because the following related records "
-                f"reference it (reassign or remove them first): " + "; ".join(blocked_list)
-            )
-        else:
-            msg = (
-                f"Cannot delete vendor '{vendor_name}' because other records reference it. "
-                "Reassign or remove dependent records before deleting."
-            )
-
-        messages.error(request, msg)
     except Exception as ex:
-        # Generic fallback to avoid 500s for unexpected errors
+        # If something still goes wrong, report it but do not show ProtectedError details.
         messages.error(request, f"An error occurred while deleting vendor '{vendor_name}': {ex}")
 
     return redirect(reverse("vendors:list"))

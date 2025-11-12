@@ -6,8 +6,7 @@ from django.utils import timezone
 
 from .models import Attendance, LeaveApplication, Delegation
 
-
-# We keep a small legacy ROLE_CHOICES only for fallback text (not used when Groups exist).
+# Fallback textual choices used only if DB is unavailable / error path
 FALLBACK_ROLE_CHOICES = [
     ('Admin', 'Admin'),
     ('Manager', 'Manager'),
@@ -19,9 +18,7 @@ class CreateUserForm(forms.Form):
     username = forms.CharField(label='Username', max_length=150, help_text='Unique username')
     first_name = forms.CharField(label='Full name', max_length=150)
     email = forms.EmailField(label='Email')
-    # designation will be initialised dynamically in __init__:
-    # - prefer a ModelChoiceField over Group if those Groups exist,
-    # - otherwise fallback to a ChoiceField with static options so form remains usable.
+    # designation will be initialized dynamically in __init__
     designation = None
 
     password1 = forms.CharField(
@@ -38,18 +35,23 @@ class CreateUserForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Preferred groups in order
+        # Preferred groups in order (the dropdown will show in this order)
         preferred_groups = ["Admin", "Manager", "Employee"]
 
-        # Try to use a ModelChoiceField bound to the preferred Group objects.
         try:
+            # Ensure preferred groups exist (idempotent)
+            for name in preferred_groups:
+                Group.objects.get_or_create(name=name)
+
+            # Now fetch them and preserve preferred order
             groups_qs = Group.objects.filter(name__in=preferred_groups)
-            # If we found all or some groups, prefer ModelChoiceField so view can get the Group instance
             if groups_qs.exists():
-                # Reorder queryset to match preferred_groups order
-                # (simple approach: annotate with ordering using Python list)
-                ordered_groups = sorted(list(groups_qs), key=lambda g: preferred_groups.index(g.name) if g.name in preferred_groups else len(preferred_groups))
-                # Use a QuerySet-like object for ModelChoiceField; we'll use the original queryset but set choices manually.
+                ordered_groups = sorted(
+                    list(groups_qs),
+                    key=lambda g: preferred_groups.index(g.name) if g.name in preferred_groups else len(preferred_groups)
+                )
+
+                # Use ModelChoiceField so the view can receive Group instance/PK
                 self.fields['designation'] = forms.ModelChoiceField(
                     queryset=groups_qs,
                     empty_label=None,
@@ -57,10 +59,10 @@ class CreateUserForm(forms.Form):
                     help_text="Choose the role/designation for this user",
                     required=True
                 )
-                # If you want to display the preferred order in the select widget, set choices manually:
+                # Force the preferred display order in the select widget
                 self.fields['designation'].choices = [(g.pk, g.name) for g in ordered_groups]
             else:
-                # No groups found yet — fallback to static choices
+                # In the unlikely case no groups found after create attempt, fallback to static choices
                 self.fields['designation'] = forms.ChoiceField(
                     choices=FALLBACK_ROLE_CHOICES,
                     label="Designation",
@@ -68,7 +70,7 @@ class CreateUserForm(forms.Form):
                     required=True
                 )
         except Exception:
-            # If something goes wrong (migrations not run, DB unavailable), fallback to simple choices
+            # If DB is unavailable or migrations not applied, fallback to static choices
             self.fields['designation'] = forms.ChoiceField(
                 choices=FALLBACK_ROLE_CHOICES,
                 label="Designation",

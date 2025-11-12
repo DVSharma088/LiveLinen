@@ -1,3 +1,4 @@
+# components/views.py
 import logging
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -10,6 +11,10 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, FieldDoesNotExist
+from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
+from django.contrib import messages
+from django.shortcuts import redirect, render
 
 from .models import CostComponent, ComponentMaster
 from .forms import CostComponentForm, ComponentMasterForm
@@ -261,41 +266,78 @@ class ComponentMasterUpdateView(LoginRequiredMixin, RoleRequiredMixin, UpdateVie
 
 
 class ComponentMasterDeleteView(LoginRequiredMixin, RoleRequiredMixin, DeleteView):
+    """
+    Render a confirmation page on GET and attempt deletion on POST.
+    Catch ProtectedError / IntegrityError and show a friendly message rather than a 500.
+    """
     model = ComponentMaster
-    # keep the template_name if you later want a confirmation template; it's ignored now
     template_name = "components/master_confirm_delete.html"
     success_url = reverse_lazy("components:master_list")
     allowed_roles = ["Admin"]
 
-    def get(self, request, *args, **kwargs):
-        """
-        Immediately perform the delete on GET by delegating to post().
-        """
+    def dispatch(self, request, *args, **kwargs):
+        # Keep defensive permission checks in place (RoleRequiredMixin handles most cases)
         if not request.user.is_authenticated:
             raise PermissionDenied()
+        return super().dispatch(request, *args, **kwargs)
 
-        if not request.user.is_superuser:
-            allowed = False
-            for role in (self.allowed_roles or []):
-                role = (role or "").strip()
-                if not role:
-                    continue
-                if role == "Admin" and is_admin(request.user):
-                    allowed = True
-                    break
-                if role == "Manager" and is_manager(request.user):
-                    allowed = True
-                    break
-                if role == "Employee" and is_employee(request.user):
-                    allowed = True
-                    break
-                if request.user.groups.filter(name=role).exists():
-                    allowed = True
-                    break
-            if not allowed:
-                raise PermissionDenied()
+    def _user_allowed(self, user):
+        """Reuse the same allowed-roles logic used elsewhere (returns True/False)."""
+        if user.is_superuser:
+            return True
+        for role in (self.allowed_roles or []):
+            role = (role or "").strip()
+            if not role:
+                continue
+            if role == "Admin" and is_admin(user):
+                return True
+            if role == "Manager" and is_manager(user):
+                return True
+            if role == "Employee" and is_employee(user):
+                return True
+            if user.groups.filter(name=role).exists():
+                return True
+        return False
 
-        return self.post(request, *args, **kwargs)
+    def get(self, request, *args, **kwargs):
+        """
+        Show a confirmation page (do NOT delete on GET).
+        """
+        if not self._user_allowed(request.user):
+            raise PermissionDenied()
+        self.object = self.get_object()
+        context = self.get_context_data(object=self.object)
+        return render(request, self.template_name, context)
+
+    def post(self, request, *args, **kwargs):
+        """
+        Attempt to delete. If deletion fails due to FK constraints, catch and show a message.
+        """
+        if not self._user_allowed(request.user):
+            raise PermissionDenied()
+
+        self.object = self.get_object()
+
+        try:
+            with transaction.atomic():
+                # Try to delete; may raise ProtectedError (Django) or IntegrityError (DB-level)
+                self.object.delete()
+        except (ProtectedError, IntegrityError) as e:
+            # Log and show friendly UI message
+            logger.exception("Failed to delete ComponentMaster (pk=%s): %s", getattr(self.object, "pk", "unknown"), e)
+            messages.error(
+                request,
+                "Cannot delete this component because other records depend on it. "
+                "Please remove or reassign the related records before deleting."
+            )
+            # Redirect back to the detail page so user sees the message and can act.
+            try:
+                return redirect("components:master_detail", pk=self.object.pk)
+            except Exception:
+                return redirect(self.success_url)
+
+        messages.success(request, "Component deleted successfully.")
+        return redirect(self.success_url)
 
 
 # ======================================================
@@ -813,7 +855,7 @@ def inventory_item_json(request):
                     continue
 
         cost_per_unit = cost_per_unit.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        final_price_per_unit = (cost_per_unit * (Decimal("1.00") + Decimal(logistics) / Decimal("100.00"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        final_price_per_unit = (cost_per_unit * (Decimal("1.00") + logistics / Decimal("100.00"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         final_cost = (final_price_per_unit * size).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         # width fallback
