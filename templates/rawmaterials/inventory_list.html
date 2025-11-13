@@ -36,7 +36,7 @@
     </div>
   {% endif %}
 
-  {# Fabrics Section (show Delete when can_delete) #}
+  {# Fabrics Section (show Actions when can_edit or can_delete) #}
   {% if active_type == 'all' or active_type == 'fabric' %}
     <div id="fabrics-section" class="mb-4">
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -59,7 +59,7 @@
               <th>Stock (Mtrs)</th>
               <th>Cost / Unit</th>
               <th>Vendor</th>
-              {% if can_delete %}
+              {% if can_edit or can_delete %}
                 <th class="text-center">Actions</th>
               {% endif %}
             </tr>
@@ -77,23 +77,29 @@
                 <td>{{ fabric.cost_per_unit }}</td>
                 <td>{% if fabric.vendor %}{{ fabric.vendor.vendor_name }}{% else %}-{% endif %}</td>
 
-                {% if can_delete %}
+                {% if can_edit or can_delete %}
                   <td class="text-center">
-                    <form action="{% url 'rawmaterials:inventory_delete' fabric.id %}" method="post" style="display:inline;">
-                      {% csrf_token %}
-                      <button
-                        type="submit"
-                        class="btn btn-sm btn-outline-danger"
-                        onclick="return confirm('Are you sure you want to permanently delete this fabric? This will also delete any related printed items.');">
-                        Delete
-                      </button>
-                    </form>
+                    {% if can_edit %}
+                      <a href="{% url 'rawmaterials:fabric_edit' fabric.id %}" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
+                    {% endif %}
+
+                    {% if can_delete %}
+                      <form action="{% url 'rawmaterials:inventory_delete' fabric.id %}" method="post" style="display:inline;">
+                        {% csrf_token %}
+                        <button
+                          type="submit"
+                          class="btn btn-sm btn-outline-danger"
+                          onclick="return confirm('Are you sure you want to permanently delete this fabric? This will also delete any related printed items.');">
+                          Delete
+                        </button>
+                      </form>
+                    {% endif %}
                   </td>
                 {% endif %}
               </tr>
             {% empty %}
               <tr>
-                <td colspan="{% if can_delete %}10{% else %}9{% endif %}" class="text-center text-muted">No fabrics found.</td>
+                <td colspan="{% if can_edit or can_delete %}10{% else %}9{% endif %}" class="text-center text-muted">No fabrics found.</td>
               </tr>
             {% endfor %}
           </tbody>
