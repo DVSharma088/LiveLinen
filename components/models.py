@@ -176,7 +176,7 @@ class ComponentMaster(models.Model):
 
     # logistics percentage (user input)
     logistics_percent = models.DecimalField(
-        max_digits=5, decimal_places=2, default=Decimal("0.00"),
+        max_digits=5, decimal_places=2, default=Decimal("10.00"),
         validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))],
         help_text=_("Percentage to add on top of base cost (e.g., 10 for 10%).")
     )

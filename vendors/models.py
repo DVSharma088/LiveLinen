@@ -5,6 +5,8 @@ class Vendor(models.Model):
         ('Fabric', 'Fabric'),
         ('Accessories', 'Accessories'),
         ('Print', 'Print'),
+        ('Dyeing', 'Dyeing'),
+        
     ]
 
     vendor_name = models.CharField(max_length=200)
