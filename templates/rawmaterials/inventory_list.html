@@ -22,103 +22,27 @@
 </ul>
 
 <div class="inventory-sections">
-  {# Accessories Section #}
+
+  {# ACCESSORIES #}
   {% if active_type == 'all' or active_type == 'accessory' %}
     <div id="accessories-section" class="mb-4">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Accessories</h5>
-        {% if can_create %}
-          <a class="btn btn-sm btn-primary" href="{% url 'rawmaterials:accessory_create' %}">Add Accessory</a>
-        {% endif %}
-      </div>
-
-      {% include 'rawmaterials/accessory_list.html' with can_create=can_create can_edit=can_edit can_delete=can_delete %}
+      {% include 'rawmaterials/parties/accessory_list.html' with can_create=can_create can_edit=can_edit can_delete=can_delete %}
     </div>
   {% endif %}
 
-  {# Fabrics Section (show Actions when can_edit or can_delete) #}
+  {# FABRICS #}
   {% if active_type == 'all' or active_type == 'fabric' %}
     <div id="fabrics-section" class="mb-4">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Fabrics</h5>
-        {% if can_create %}
-          <a class="btn btn-sm btn-primary" href="{% url 'rawmaterials:fabric_create' %}">Add Fabric</a>
-        {% endif %}
-      </div>
-
-      <div class="table-responsive">
-        <table class="table table-striped table-bordered align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Item Name</th>
-              <th>Quality</th>  {# was Quality (%) #}
-              <th>Base Color</th>
-              <th>Type</th>  {# was Fabric Type #}
-              <th>Fabric Width</th>
-              <th>Use In</th>
-              <th>Stock (Mtrs)</th>
-              <th>Cost / Unit</th>
-              <th>Vendor</th>
-              {% if can_edit or can_delete %}
-                <th class="text-center">Actions</th>
-              {% endif %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for fabric in fabrics %}
-              <tr>
-                <td>{{ fabric.item_name }}</td>
-                <td>{{ fabric.quality|default:"-" }}</td>
-                <td>{{ fabric.base_color|default:"-" }}</td>
-                <td>{{ fabric.type|default:"-" }}</td>  {# updated field reference #}
-                <td>{{ fabric.fabric_width }}</td>
-                <td>{{ fabric.use_in|default:"-" }}</td>
-                <td>{{ fabric.stock_in_mtrs }}</td>
-                <td>{{ fabric.cost_per_unit }}</td>
-                <td>{% if fabric.vendor %}{{ fabric.vendor.vendor_name }}{% else %}-{% endif %}</td>
-
-                {% if can_edit or can_delete %}
-                  <td class="text-center">
-                    {% if can_edit %}
-                      <a href="{% url 'rawmaterials:fabric_edit' fabric.id %}" class="btn btn-sm btn-outline-secondary me-1">Edit</a>
-                    {% endif %}
-
-                    {% if can_delete %}
-                      <form action="{% url 'rawmaterials:inventory_delete' fabric.id %}" method="post" style="display:inline;">
-                        {% csrf_token %}
-                        <button
-                          type="submit"
-                          class="btn btn-sm btn-outline-danger"
-                          onclick="return confirm('Are you sure you want to permanently delete this fabric? This will also delete any related printed items.');">
-                          Delete
-                        </button>
-                      </form>
-                    {% endif %}
-                  </td>
-                {% endif %}
-              </tr>
-            {% empty %}
-              <tr>
-                <td colspan="{% if can_edit or can_delete %}10{% else %}9{% endif %}" class="text-center text-muted">No fabrics found.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      {% include 'rawmaterials/parties/fabric_list.html' with fabrics=fabrics can_create=can_create can_edit=can_edit can_delete=can_delete %}
     </div>
   {% endif %}
 
-  {# Printed Section #}
+  {# PRINTED #}
   {% if active_type == 'all' or active_type == 'printed' %}
     <div id="printed-section" class="mb-4">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Printed</h5>
-        {% if can_create %}
-          <a class="btn btn-sm btn-primary" href="{% url 'rawmaterials:printed_create' %}">Add Printed</a>
-        {% endif %}
-      </div>
       {% include 'rawmaterials/parties/printed_list.html' with can_create=can_create can_edit=can_edit can_delete=can_delete %}
     </div>
   {% endif %}
+
 </div>
 {% endblock %}

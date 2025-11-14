@@ -26,16 +26,16 @@
       <div class="card-body">
         <h5 class="card-title">Delegations (recent)</h5>
         {% if delegations %}
-          <ul class="list-unstyled">
+          <ul class="list-unstyled mb-0">
             {% for d in delegations %}
-              <li>
+              <li class="mb-2">
                 <strong>{{ d.title }}</strong>
-                <small>— {{ d.created_by.get_full_name|default:d.created_by.username }}</small>
-                <div><small>{{ d.start_date }}{% if d.end_date %} — {{ d.end_date }}{% endif %}</small></div>
-                <div>{{ d.description|truncatechars:160 }}</div>
+                <small class="text-muted"> — {{ d.created_by.get_full_name|default:d.created_by.username }}</small>
+                <div><small class="text-muted">{{ d.start_date }}{% if d.end_date %} — {{ d.end_date }}{% endif %}</small></div>
+                <div class="mt-1">{{ d.description|truncatechars:160 }}</div>
                 <div class="mt-1"><a href="{% url 'core:delegation_list' %}" class="small">View all</a></div>
               </li>
-              <hr class="my-2"/>
+              {% if not forloop.last %}<hr class="my-2"/>{% endif %}
             {% endfor %}
           </ul>
         {% else %}
@@ -56,5 +56,79 @@
   </div>
 </div>
 
+<!-- GRAPHS SECTION -->
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Graphs</h5>
+        <small class="text-muted">Inventory (weekly) & Orders issued (weekly)</small>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <h6 class="card-title">Inventory added (last 7 days)</h6>
+                <canvas id="inventoryPieChart" aria-label="Inventory pie chart" role="img" width="400" height="300"></canvas>
+                <div class="mt-2 small text-muted">Shows accessory, fabric, printed items added in the last 7 days.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <h6 class="card-title">Orders issued per week (last 8 weeks)</h6>
+                <canvas id="ordersLineChart" aria-label="Orders per week line chart" role="img" width="600" height="300"></canvas>
+                <div class="mt-2 small text-muted">Weekly counts of issued orders (uses applied_at if set, otherwise created_at).</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>  
+</div>
+
+{# Include Chart.js from CDN. If you prefer a local copy, replace this with your static path. #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+{# Safely inject JSON produced by the view.
+   We produce JSON in the view with json.dumps(...). Here we escape it for JS
+   and then parse it with JSON.parse so the result is always a valid object. #}
+<script>
+  (function () {
+    // Use escapejs to ensure the JSON string is safe to embed inside quotes.
+    // If the view didn't provide these, default to empty objects/arrays.
+    var inventoryJsonStr = '{{ inventory_pie_json|default:"{}"|escapejs }}';
+    var ordersJsonStr = '{{ orders_line_json|default:"{}"|escapejs }}';
+
+    var inventoryPie = {};
+    var ordersLine = {};
+
+    try {
+      inventoryPie = JSON.parse(inventoryJsonStr || '{}');
+    } catch (e) {
+      console.error("Failed to parse inventory_pie_json:", e, inventoryJsonStr);
+      inventoryPie = {"labels":[], "values":[]};
+    }
+
+    try {
+      ordersLine = JSON.parse(ordersJsonStr || '{}');
+    } catch (e) {
+      console.error("Failed to parse orders_line_json:", e, ordersJsonStr);
+      ordersLine = {"labels":[], "values":[]};
+    }
+
+    // Expose to window for static JS to pick up
+    window.__LIVE_LINEN_CHARTS = window.__LIVE_LINEN_CHARTS || {};
+    window.__LIVE_LINEN_CHARTS.inventoryPie = inventoryPie;
+    window.__LIVE_LINEN_CHARTS.ordersLine = ordersLine;
+  })();
+</script>
+
+{# Your existing dashboard JS (keeps whatever other dashboard behaviour you have) #}
 <script src="{% static 'core/js/dashboard.js' %}"></script>
+
 {% endblock %}

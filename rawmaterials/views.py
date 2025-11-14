@@ -1,4 +1,6 @@
 from decimal import Decimal, InvalidOperation
+import csv
+import io
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -7,6 +9,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.db.models.deletion import ProtectedError
 from django.db import transaction
+from django.http import HttpResponse
 
 # Import models and forms used by the app.
 from .models import Fabric, Accessory, Printed
@@ -68,6 +71,46 @@ def _coerce_decimal_or_none(value):
         return None
 
 
+# -------------------------
+# CSV helper
+# -------------------------
+def _queryset_to_csv_response(queryset, field_getters, filename):
+    """
+    Build an HttpResponse with CSV content.
+
+    - queryset: iterable of model instances
+    - field_getters: list of tuples (column_name, getter_callable)
+        getter_callable(instance) -> string/number
+    - filename: suggested filename for download
+    """
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+
+    # header
+    headers = [col for col, _ in field_getters]
+    writer.writerow(headers)
+
+    # rows
+    for obj in queryset:
+        row = []
+        for _, getter in field_getters:
+            try:
+                val = getter(obj)
+            except Exception:
+                val = ""
+            # Ensure no problems with Decimal or None
+            if isinstance(val, Decimal):
+                val = str(val)
+            if val is None:
+                val = ""
+            row.append(val)
+        writer.writerow(row)
+
+    resp = HttpResponse(buffer.getvalue(), content_type="text/csv")
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return resp
+
+
 # ------------------------------
 # Inventory list / overview
 # ------------------------------
@@ -120,6 +163,102 @@ def inventory_list(request):
         "can_delete": can_delete,
     }
     return render(request, "rawmaterials/inventory_list.html", context)
+
+
+# ------------------------------
+# CSV download views
+# ------------------------------
+@login_required
+@user_passes_test(is_employee)
+def accessory_download_csv(request):
+    """
+    Download all Accessory records as CSV. Allowed for employees and above.
+    """
+    qs = Accessory.objects.select_related("vendor").all().order_by("id")
+
+    def vendor_name(obj):
+        v = getattr(obj, "vendor", None)
+        if v is None:
+            return ""
+        # try common vendor fields
+        return getattr(v, "vendor_name", None) or getattr(v, "name", None) or str(v)
+
+    field_getters = [
+        ("id", lambda o: getattr(o, "id", "")),
+        ("name", lambda o: getattr(o, "name", "") or getattr(o, "item_name", "") or getattr(o, "product", "")),
+        ("quality", lambda o: getattr(o, "quality", "")),
+        ("width", lambda o: getattr(o, "width", "") or getattr(o, "fabric_width", "")),
+        ("stock", lambda o: getattr(o, "stock", "")),
+        ("cost_per_unit", lambda o: getattr(o, "cost_per_unit", "")),
+        ("vendor", vendor_name),
+    ]
+
+    return _queryset_to_csv_response(qs, field_getters, "accessories.csv")
+
+
+@login_required
+@user_passes_test(is_employee)
+def fabric_download_csv(request):
+    """
+    Download all Fabric records as CSV. Allowed for employees and above.
+    """
+    qs = Fabric.objects.select_related("vendor").all().order_by("id")
+
+    def vendor_name(obj):
+        v = getattr(obj, "vendor", None)
+        if v is None:
+            return ""
+        return getattr(v, "vendor_name", None) or getattr(v, "name", None) or str(v)
+
+    field_getters = [
+        ("id", lambda o: getattr(o, "id", "")),
+        ("item_name", lambda o: getattr(o, "item_name", "") or getattr(o, "name", "") or getattr(o, "product", "")),
+        ("fabric_width", lambda o: getattr(o, "fabric_width", "") or getattr(o, "width", "")),
+        ("quality", lambda o: getattr(o, "quality", "")),
+        ("stock", lambda o: getattr(o, "stock", "")),
+        ("cost_per_unit", lambda o: getattr(o, "cost_per_unit", "")),
+        ("base_color", lambda o: getattr(o, "base_color", "")),
+        ("type", lambda o: getattr(o, "type", "") or getattr(o, "product_type", "")),
+        ("use_in", lambda o: getattr(o, "use_in", "")),
+        ("vendor", vendor_name),
+    ]
+
+    return _queryset_to_csv_response(qs, field_getters, "fabrics.csv")
+
+
+@login_required
+@user_passes_test(is_employee)
+def printed_download_csv(request):
+    """
+    Download all Printed records as CSV. Allowed for employees and above.
+    """
+    qs = Printed.objects.select_related("fabric", "vendor").all().order_by("id")
+
+    def vendor_name(obj):
+        v = getattr(obj, "vendor", None)
+        if v is None:
+            return ""
+        return getattr(v, "vendor_name", None) or getattr(v, "name", None) or str(v)
+
+    def fabric_ref(obj):
+        f = getattr(obj, "fabric", None)
+        if not f:
+            return ""
+        return getattr(f, "item_name", None) or getattr(f, "name", None) or str(f)
+
+    field_getters = [
+        ("id", lambda o: getattr(o, "id", "")),
+        ("name", lambda o: getattr(o, "name", "") or getattr(o, "product", "") or getattr(o, "item_name", "")),
+        ("fabric_id", lambda o: getattr(getattr(o, "fabric", None), "id", "")),
+        ("fabric_item_name", fabric_ref),
+        ("base_color", lambda o: getattr(o, "base_color", "")),
+        ("product_type", lambda o: getattr(o, "product_type", "") or getattr(o, "type", "")),
+        ("width", lambda o: getattr(o, "width", "")),
+        ("cost_per_unit", lambda o: getattr(o, "cost_per_unit", "")),
+        ("vendor", vendor_name),
+    ]
+
+    return _queryset_to_csv_response(qs, field_getters, "printeds.csv")
 
 
 # ------------------------------

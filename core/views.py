@@ -1,5 +1,6 @@
 # core/views.py
 from datetime import timedelta
+import json
 import logging
 import uuid
 
@@ -14,10 +15,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django.db import transaction
 from django.template import TemplateDoesNotExist
+from django.db.models import Count
+from django.db.models.functions import TruncWeek, Coalesce
 
 from .forms import CreateUserForm, AttendanceForm, LeaveApplicationForm, DelegationForm
 from .models import Attendance, LeaveApplication, Delegation
-from rawmaterials.models import Fabric
+from rawmaterials.models import Fabric, Accessory, Printed
+from issue_material.models import Issue
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +219,10 @@ def dashboard(request):
 
     If a role-specific template is missing, fall back to the employee dashboard
     to avoid a TemplateDoesNotExist 500.
+
+    This function has been extended to prepare chart data for:
+      - inventory_pie_json: counts of Accessory / Fabric / Printed created in the last 7 days
+      - orders_line_json: weekly counts of Issues (applied_at or created_at) for the last N weeks
     """
     # Common metrics
     fabric_count = Fabric.objects.count()
@@ -247,6 +255,64 @@ def dashboard(request):
         "pending_leaves_count": pending_leaves_count,
         "delegations": delegations_qs,
     }
+
+    # -----------------------------
+    # Prepare chart data
+    # -----------------------------
+    try:
+        now = timezone.now()
+        seven_days_ago = now - timedelta(days=7)
+
+        accessory_count = Accessory.objects.filter(created_at__gte=seven_days_ago).count()
+        fabric_count_week = Fabric.objects.filter(created_at__gte=seven_days_ago).count()
+        printed_count = Printed.objects.filter(created_at__gte=seven_days_ago).count()
+
+        inventory_pie = {
+            "labels": ["Accessory", "Fabric", "Printed"],
+            "values": [accessory_count, fabric_count_week, printed_count],
+        }
+
+        # LINE CHART: Issues per week (last N weeks)
+        WEEKS = 8
+        loc_now = timezone.now()
+        week_starts = []
+        for i in range(WEEKS - 1, -1, -1):
+            dt = (loc_now - timedelta(weeks=i)).date()
+            monday = dt - timedelta(days=dt.weekday())
+            week_starts.append(monday.isoformat())
+
+        qs = Issue.objects.annotate(
+            issued_when=Coalesce("applied_at", "created_at")
+        ).annotate(
+            issued_week=TruncWeek("issued_when")
+        ).values("issued_week").annotate(cnt=Count("pk")).order_by("issued_week")
+
+        week_counts_map = {}
+        for row in qs:
+            wk = row.get("issued_week")
+            if wk is None:
+                continue
+            # convert to local date iso
+            try:
+                wk_date = timezone.localtime(wk).date().isoformat()
+            except Exception:
+                # as fallback, if wk is already date-like
+                wk_date = getattr(wk, "date", lambda: wk)().isoformat() if wk else None
+            if wk_date:
+                week_counts_map[wk_date] = row.get("cnt", 0)
+
+        orders_line = {"labels": week_starts, "values": []}
+        for wk_label in week_starts:
+            orders_line["values"].append(week_counts_map.get(wk_label, 0))
+
+        context["inventory_pie_json"] = json.dumps(inventory_pie)
+        context["orders_line_json"] = json.dumps(orders_line)
+    except Exception as exc:
+        # Chart preparation should not break the dashboard render
+        logger.exception("Failed to prepare dashboard chart data for user=%s exc=%s", request.user.username, exc)
+        # provide empty safe defaults
+        context["inventory_pie_json"] = json.dumps({"labels": ["Accessory", "Fabric", "Printed"], "values": [0, 0, 0]})
+        context["orders_line_json"] = json.dumps({"labels": [], "values": []})
 
     # Choose template by role
     if is_admin(request.user):

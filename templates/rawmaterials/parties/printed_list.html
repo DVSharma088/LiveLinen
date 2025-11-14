@@ -1,13 +1,22 @@
 {# templates/rawmaterials/parties/printed_list.html #}
-
 {# Expects `printeds`, `can_create`, `can_edit`, `can_delete` in context #}
 
 <div class="card mb-4 shadow-sm">
   <div class="card-header d-flex justify-content-between align-items-center bg-light">
     <h6 class="mb-0 fw-semibold">Printed</h6>
-    {% if can_create %}
-      <a href="{% url 'rawmaterials:printed_create' %}" class="btn btn-sm btn-primary">Add Printed</a>
-    {% endif %}
+
+    <div class="d-flex gap-2">
+      {% if can_create %}
+        <a href="{% url 'rawmaterials:printed_create' %}" class="btn btn-sm btn-primary">Add Printed</a>
+      {% endif %}
+
+      {# Download CSV button (server enforces permissions) #}
+      {% if can_create %}
+        <a href="{% url 'rawmaterials:printed_download_csv' %}" class="btn btn-sm btn-outline-secondary" title="Download all printed items as CSV">
+          Download CSV
+        </a>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card-body p-0">
@@ -37,14 +46,14 @@
           {% for p in printeds %}
             <tr>
               <td>{{ p.product }}</td>
-              <td>{{ p.fabric.item_name }}</td>
+              <td>{% if p.fabric %}{{ p.fabric.item_name }}{% else %}-{% endif %}</td>
 
               {# Quality: prefer Printed.quality, fallback to Fabric.quality #}
               <td>
                 {% if p.quality is not None %}
                   {{ p.quality|floatformat:2 }}
                 {% else %}
-                  {% if p.fabric.quality is not None %}
+                  {% if p.fabric and p.fabric.quality is not None %}
                     {{ p.fabric.quality|floatformat:2 }}
                   {% else %}
                     -
@@ -56,7 +65,11 @@
                 {% if p.base_color %}
                   {{ p.base_color }}
                 {% else %}
-                  {{ p.fabric.base_color|default:"-" }}
+                  {% if p.fabric and p.fabric.base_color %}
+                    {{ p.fabric.base_color }}
+                  {% else %}
+                    -
+                  {% endif %}
                 {% endif %}
               </td>
 
@@ -64,15 +77,19 @@
                 {% if p.product_type %}
                   {{ p.product_type }}
                 {% else %}
-                  {{ p.fabric.type|default:"-" }}
+                  {% if p.fabric and p.fabric.type %}
+                    {{ p.fabric.type }}
+                  {% else %}
+                    -
+                  {% endif %}
                 {% endif %}
               </td>
 
-              <td>
-                {% if p.width %}
+              <td class="text-nowrap">
+                {% if p.width is not None %}
                   {{ p.width|floatformat:2 }}
                 {% else %}
-                  {% if p.fabric.fabric_width %}
+                  {% if p.fabric and p.fabric.fabric_width is not None %}
                     {{ p.fabric.fabric_width|floatformat:2 }}
                   {% else %}
                     -
@@ -84,18 +101,26 @@
                 {% if p.use_in %}
                   {{ p.use_in }}
                 {% else %}
-                  {{ p.fabric.use_in|default:"-" }}
+                  {% if p.fabric and p.fabric.use_in %}
+                    {{ p.fabric.use_in }}
+                  {% else %}
+                    -
+                  {% endif %}
                 {% endif %}
               </td>
 
-              <td class="text-end">{{ p.quantity_used|floatformat:3 }}</td>
-              <td class="text-end">{{ p.stock|floatformat:3 }}</td>
+              <td class="text-end">{{ p.quantity_used|default_if_none:0|floatformat:3 }}</td>
+              <td class="text-end">{{ p.stock|default_if_none:0|floatformat:3 }}</td>
 
               <td class="text-end">
-                {% if p.cost_per_unit and p.cost_per_unit|floatformat:2 != "0.00" %}
+                {% if p.cost_per_unit %}
                   {{ p.cost_per_unit|floatformat:2 }}
                 {% else %}
-                  {{ p.fabric.cost_per_unit|floatformat:2 }}
+                  {% if p.fabric and p.fabric.cost_per_unit %}
+                    {{ p.fabric.cost_per_unit|floatformat:2 }}
+                  {% else %}
+                    0.00
+                  {% endif %}
                 {% endif %}
               </td>
 
@@ -103,7 +128,7 @@
                 {% if p.vendor %}
                   {{ p.vendor.vendor_name }}
                 {% else %}
-                  {% if p.fabric.vendor %}
+                  {% if p.fabric and p.fabric.vendor %}
                     {{ p.fabric.vendor.vendor_name }}
                   {% else %}
                     -
@@ -111,7 +136,7 @@
                 {% endif %}
               </td>
 
-              <td class="text-end">{{ p.rate|floatformat:2 }}</td>
+              <td class="text-end">{{ p.rate|default_if_none:0|floatformat:2 }}</td>
 
               {% if can_edit or can_delete %}
                 <td class="text-center">
