@@ -1,7 +1,9 @@
 # rawmaterials/forms.py
+
 from decimal import Decimal, InvalidOperation
 from django import forms
 from django.core.exceptions import ValidationError
+from django.conf import settings
 
 from .models import Fabric, Accessory, Printed
 
@@ -466,3 +468,49 @@ class PrintedForm(forms.ModelForm):
                 pass
 
         return cleaned
+
+
+# ----------------------------
+# CSV Upload Form (for bulk import)
+# ----------------------------
+class CSVUploadForm(forms.Form):
+    """
+    Simple form to upload CSV files. Keeps validation basic:
+      - ensures extension endswith .csv
+      - optional 'target' to choose which model to import into (fabric/accessory/printed)
+      - size limit (default 5 MB) to avoid huge uploads; adjust MAX_CSV_UPLOAD_SIZE in settings if needed.
+    The heavy lifting (parsing, header checks, per-row validation) should be done in the view or a service helper.
+    """
+    MODEL_CHOICES = (
+        ("fabric", "Fabric"),
+        ("accessory", "Accessory"),
+        ("printed", "Printed"),
+    )
+
+    csv_file = forms.FileField(
+        label="CSV file",
+        help_text="Upload a UTF-8 .csv file. Required headers depend on chosen target model.",
+    )
+    target = forms.ChoiceField(
+        choices=MODEL_CHOICES,
+        label="Import target",
+        help_text="Select which model this CSV will import into."
+    )
+
+    # default max upload size 5 MB (can override by setting MAX_CSV_UPLOAD_SIZE in settings)
+    DEFAULT_MAX_SIZE = 5 * 1024 * 1024
+
+    def clean_csv_file(self):
+        f = self.cleaned_data.get("csv_file")
+        if not f:
+            raise ValidationError("No file uploaded.")
+        name = getattr(f, "name", "")
+        # extension check
+        if not name.lower().endswith(".csv"):
+            raise ValidationError("Please upload a file with .csv extension.")
+        # size check
+        max_size = getattr(settings, "MAX_CSV_UPLOAD_SIZE", self.DEFAULT_MAX_SIZE)
+        if hasattr(f, "size") and f.size > max_size:
+            raise ValidationError(f"CSV file is too large. Max allowed size is {max_size // (1024*1024)} MB.")
+        # content-type is not reliable across clients/servers, so do not rely solely on it.
+        return f

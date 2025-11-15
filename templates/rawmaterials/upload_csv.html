@@ -1,0 +1,135 @@
+{# templates/rawmaterials/upload_csv.html #}
+{% extends "base.html" %}
+{% block page_title %}Upload CSV - Inventory{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>Upload CSV (Bulk Import)</h4>
+    <a class="btn btn-secondary" href="{% url 'rawmaterials:inventory' %}">← Back to Inventory</a>
+  </div>
+
+  {# Django messages #}
+  {% if messages %}
+    <div class="mb-3">
+      {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}" role="alert">
+          {{ message }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" class="row g-3">
+        {% csrf_token %}
+        <div class="col-md-6">
+          {{ form.csv_file.label_tag }}
+          {{ form.csv_file }}
+          {% if form.csv_file.help_text %}
+            <div class="form-text small">{{ form.csv_file.help_text }}</div>
+          {% endif %}
+          {% for err in form.csv_file.errors %}
+            <div class="text-danger small">{{ err }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-md-4">
+          {{ form.target.label_tag }}
+          {{ form.target }}
+          {% if form.target.help_text %}
+            <div class="form-text small">{{ form.target.help_text }}</div>
+          {% endif %}
+          {% for err in form.target.errors %}
+            <div class="text-danger small">{{ err }}</div>
+          {% endfor %}
+        </div>
+
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary w-100">Upload CSV</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="mb-4">
+    <h5>Quick rules & tips</h5>
+    <ul>
+      <li><strong>First row is the header:</strong> the importer reads the first row as column names and maps them to the expected fields.</li>
+      <li>File must be a UTF-8 encoded <code>.csv</code>. (If using Excel, choose "CSV UTF-8".)</li>
+      <li>Small-to-medium imports are handled synchronously. The view will <strong>skip duplicates</strong> by key (see each target below).</li>
+      <li>Vendor column may be a numeric <code>vendor_id</code> (preferred) or a vendor name — numeric IDs will be used to set <code>vendor_id</code>. If a vendor name is provided and not found, a new Vendor will be created.</li>
+      <li>Delimiter is detected automatically (comma/semicolon/tab/pipe), but you should use comma (`,` ) when possible.</li>
+      <li>Required headers depend on the target (see canonical header examples below).</li>
+    </ul>
+  </div>
+
+  <div class="row">
+    <div class="col-md-4 mb-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6>Fabric — canonical headers</h6>
+          <p class="small mb-1"><strong>Canonical (first-row) header order (example):</strong></p>
+          <pre class="small">id, item_name, fabric_width, quality, stock, cost_per_unit, base_color, type, use_in, vendor</pre>
+          <p class="small mb-1"><strong>Required:</strong> <code>item_name</code>, <code>fabric_width</code></p>
+          <p class="small small mb-1"><strong>Duplicate detection:</strong> exact <code>item_name</code> (case-insensitive)</p>
+          <hr/>
+          <div class="small">
+<pre>item_name,fabric_width,quality,base_color,stock,cost_per_unit,type,use_in,vendor
+Blue Cotton,44.00,85.5,Blue,100.000,120.00,Cotton,Shirts,1
+Red Linen,40.00,A1,Red,50.000,180.00,Linen,Dresses,2</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4 mb-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6>Accessory — canonical headers</h6>
+          <p class="small mb-1"><strong>Canonical (first-row) header order (example):</strong></p>
+          <pre class="small">id, name, quality, width, stock, cost_per_unit, vendor</pre>
+          <p class="small mb-1"><strong>Required:</strong> <code>name</code></p>
+          <p class="small mb-1"><strong>Duplicate detection:</strong> exact <code>name</code> → stored to <code>item_name</code> (case-insensitive)</p>
+          <hr/>
+          <div class="small">
+<pre>name,quality,width,stock,cost_per_unit,vendor
+Metal Button,A,0.50,1000,0.50,3
+Zipper,90,1.00,200,15.00,4</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4 mb-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6>Printed — canonical headers</h6>
+          <p class="small mb-1"><strong>Canonical (first-row) header order (example):</strong></p>
+          <pre class="small">id, name, fabric_id, fabric_item_name, base_color, product_type, width, cost_per_unit, vendor</pre>
+          <p class="small mb-1"><strong>Required:</strong> <code>name</code> (printed product)</p>
+          <p class="small mb-1"><strong>To link fabric:</strong> provide <code>fabric_id</code> (fabric PK) or <code>fabric_item_name</code> (item_name)</p>
+          <p class="small mb-1"><strong>Duplicate detection:</strong> product <code>name</code> + fabric (if provided)</p>
+          <hr/>
+          <div class="small">
+<pre>name,fabric_id,base_color,product_type,width,quantity_used,stock,cost_per_unit,rate,vendor
+Printed Shirt,12,White,Shirt,44.00,1.000,50,200.00,250.00,1
+Floral Dress,,Red,Dress,40.00,2.000,20,350.00,400.00,"KD Prints"</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <h6>Example CSV troubleshooting</h6>
+    <ul>
+      <li>If rows are skipped, check for duplicates by the key described above (exact name match, case-insensitive).</li>
+      <li>If numeric parsing fails (e.g., <code>fabric_width</code>), ensure the column contains only numbers (use dot decimal: <code>44.00</code>).</li>
+      <li>If your CSV headers use slightly different punctuation or spaces (e.g., <code>Base Color</code> vs <code>base_color</code>), the importer will normalize header names (lowercase and convert spaces/punctuation) but using the canonical names above avoids ambiguity.</li>
+      <li>Large files (> ~5MB) may be blocked by server limits. Split into smaller files if needed.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
