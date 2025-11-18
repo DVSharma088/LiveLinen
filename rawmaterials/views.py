@@ -78,17 +78,25 @@ def _coerce_decimal_or_none(value):
 
 def _parse_decimal(value, default=None, required=False):
     """
-    Helper to parse a Decimal from strings/numbers. Returns Decimal or default.
+    Helper to parse a Decimal from cleaned strings/numbers. Returns Decimal or default.
     If required=True and parsing fails or value is blank -> raises ValueError.
+    This expects 'value' to be already cleaned text or numeric; it will remove commas used as thousands separators.
     """
     if value in (None, ""):
         if required:
             raise ValueError("Missing required numeric value.")
         return default
     try:
-        return Decimal(str(value).strip())
-    except (InvalidOperation, TypeError, ValueError):
-        raise ValueError(f"Invalid numeric value '{value}'.")
+        txt = str(value).strip()
+        # treat single-character placeholders as missing
+        if txt in ("-", "—", "–"):
+            if required:
+                raise ValueError("Missing required numeric value.")
+            return default
+        txt = txt.replace(",", "")  # remove thousands separators
+        return Decimal(txt)
+    except (InvalidOperation, TypeError, ValueError) as e:
+        raise ValueError(f"Invalid numeric value '{value}'.") from e
 
 
 def _parse_int(value, default=None, required=False):
@@ -104,7 +112,7 @@ def _parse_int(value, default=None, required=False):
 
 
 # -------------------------
-# Vendor helper: resolve or create
+# Vendor helper: resolve or create (returns None when vendor text is missing)
 # -------------------------
 def _get_or_create_vendor(vendor_val):
     """
@@ -113,9 +121,6 @@ def _get_or_create_vendor(vendor_val):
     - If vendor_val is integer-like -> try Vendor by pk
     - Otherwise try lookup by vendor_name (case-insensitive)
     - If not found, create a new Vendor with vendor_name=vendor_val (trimmed) and return it.
-
-    NOTE: When auto-creating a Vendor we provide a safe default for `rate` to satisfy
-    NOT NULL constraints on Vendor.rate (rate default = 0.00).
     """
     if vendor_val in (None, ""):
         return None
@@ -139,7 +144,6 @@ def _get_or_create_vendor(vendor_val):
         return vendor
 
     # create new vendor (uses get_or_create to avoid duplicates)
-    # Provide a sensible default for required fields (rate) to avoid NOT NULL failures.
     vendor, created = Vendor.objects.get_or_create(
         vendor_name=v_raw,
         defaults={"rate": Decimal("0.00")}
@@ -153,11 +157,6 @@ def _get_or_create_vendor(vendor_val):
 def _queryset_to_csv_response(queryset, field_getters, filename):
     """
     Build an HttpResponse with CSV content.
-
-    - queryset: iterable of model instances
-    - field_getters: list of tuples (column_name, getter_callable)
-        getter_callable(instance) -> string/number
-    - filename: suggested filename for download
     """
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -207,7 +206,8 @@ def inventory_list(request):
     can_create = can_manage_inventory(request.user)
     can_delete = can_delete_inventory(request.user)
 
-    accessory_numeric_fields = ("quality", "width", "stock", "cost_per_unit")
+    # quality is a CharField now — don't coerce it to Decimal here
+    accessory_numeric_fields = ("width", "stock", "cost_per_unit")
     fabric_numeric_fields = ("fabric_width", "cost_per_unit")
     printed_numeric_fields = ("cost_per_unit", "width")
 
@@ -248,7 +248,8 @@ def inventory_list(request):
 @user_passes_test(is_employee)
 def accessory_download_csv(request):
     """
-    Download all Accessory records as CSV. Allowed for employees and above.
+    Export accessories with full columns that match the form/importer:
+    id, name, quality, base_color, type, width, use_in, stock, cost_per_unit, vendor
     """
     qs = Accessory.objects.select_related("vendor").all().order_by("id")
 
@@ -256,14 +257,17 @@ def accessory_download_csv(request):
         v = getattr(obj, "vendor", None)
         if v is None:
             return ""
-        # try common vendor fields
         return getattr(v, "vendor_name", None) or getattr(v, "name", None) or str(v)
 
+    # Note: Accessory uses 'item_type' in model; map it to header 'type' for CSV compatibility
     field_getters = [
         ("id", lambda o: getattr(o, "id", "")),
-        ("name", lambda o: getattr(o, "name", "") or getattr(o, "item_name", "") or getattr(o, "product", "")),
-        ("quality", lambda o: getattr(o, "quality", "")),
-        ("width", lambda o: getattr(o, "width", "") or getattr(o, "fabric_width", "")),
+        ("name", lambda o: getattr(o, "item_name", "") or getattr(o, "name", "") or getattr(o, "product", "")),
+        ("quality", lambda o: getattr(o, "quality", "") or getattr(o, "quality_text", "")),
+        ("base_color", lambda o: getattr(o, "base_color", "")),
+        ("type", lambda o: getattr(o, "item_type", "") or getattr(o, "type", "")),
+        ("width", lambda o: getattr(o, "width", "") or ""),
+        ("use_in", lambda o: getattr(o, "use_in", "")),
         ("stock", lambda o: getattr(o, "stock", "")),
         ("cost_per_unit", lambda o: getattr(o, "cost_per_unit", "")),
         ("vendor", vendor_name),
@@ -275,9 +279,6 @@ def accessory_download_csv(request):
 @login_required
 @user_passes_test(is_employee)
 def fabric_download_csv(request):
-    """
-    Download all Fabric records as CSV. Allowed for employees and above.
-    """
     qs = Fabric.objects.select_related("vendor").all().order_by("id")
 
     def vendor_name(obj):
@@ -291,7 +292,7 @@ def fabric_download_csv(request):
         ("item_name", lambda o: getattr(o, "item_name", "") or getattr(o, "name", "") or getattr(o, "product", "")),
         ("fabric_width", lambda o: getattr(o, "fabric_width", "") or getattr(o, "width", "")),
         ("quality", lambda o: getattr(o, "quality", "")),
-        ("stock", lambda o: getattr(o, "stock", "")),
+        ("stock", lambda o: getattr(o, "stock_in_mtrs", "")),
         ("cost_per_unit", lambda o: getattr(o, "cost_per_unit", "")),
         ("base_color", lambda o: getattr(o, "base_color", "")),
         ("type", lambda o: getattr(o, "type", "") or getattr(o, "product_type", "")),
@@ -306,13 +307,21 @@ def fabric_download_csv(request):
 @user_passes_test(is_employee)
 def printed_download_csv(request):
     """
-    Download all Printed records as CSV. Allowed for employees and above.
+    Export printed items with columns matching printed list / form:
+    Product, Fabric (item_name), Quality, Base Color, Type, Width, Use In,
+    Unit, Quantity Used, Stock, Cost Per Unit, Rate, Vendor
     """
-    qs = Printed.objects.select_related("fabric", "vendor").all().order_by("id")
+    qs = Printed.objects.select_related("fabric", "fabric__vendor", "vendor").all().order_by("id")
 
     def vendor_name(obj):
         v = getattr(obj, "vendor", None)
         if v is None:
+            # try fabric vendor if printed vendor missing
+            f = getattr(obj, "fabric", None)
+            if f:
+                fv = getattr(f, "vendor", None)
+                if fv:
+                    return getattr(fv, "vendor_name", None) or getattr(fv, "name", None) or str(fv)
             return ""
         return getattr(v, "vendor_name", None) or getattr(v, "name", None) or str(v)
 
@@ -322,15 +331,37 @@ def printed_download_csv(request):
             return ""
         return getattr(f, "item_name", None) or getattr(f, "name", None) or str(f)
 
+    def fabric_id(obj):
+        f = getattr(obj, "fabric", None)
+        if not f:
+            return ""
+        return getattr(f, "id", "")
+
+    def _unit_for(obj):
+        # prefer printed.unit, fallback to fabric.unit if present; return empty string if none
+        u = getattr(obj, "unit", None)
+        if u:
+            return u
+        f = getattr(obj, "fabric", None)
+        if f:
+            fu = getattr(f, "unit", None)
+            if fu:
+                return fu
+        return ""
+
     field_getters = [
-        ("id", lambda o: getattr(o, "id", "")),
-        ("name", lambda o: getattr(o, "name", "") or getattr(o, "product", "") or getattr(o, "item_name", "")),
-        ("fabric_id", lambda o: getattr(getattr(o, "fabric", None), "id", "")),
+        ("product", lambda o: getattr(o, "product", "") or getattr(o, "name", "") or getattr(o, "item_name", "")),
         ("fabric_item_name", fabric_ref),
-        ("base_color", lambda o: getattr(o, "base_color", "")),
-        ("product_type", lambda o: getattr(o, "product_type", "") or getattr(o, "type", "")),
-        ("width", lambda o: getattr(o, "width", "")),
-        ("cost_per_unit", lambda o: getattr(o, "cost_per_unit", "")),
+        ("quality", lambda o: getattr(o, "quality", "") or (getattr(o, "fabric", None) and getattr(o.fabric, "quality", "")) or ""),
+        ("base_color", lambda o: getattr(o, "base_color", "") or (getattr(o, "fabric", None) and getattr(o.fabric, "base_color", "")) or ""),
+        ("product_type", lambda o: getattr(o, "product_type", "") or getattr(o, "type", "") or (getattr(o, "fabric", None) and getattr(o.fabric, "type", "")) or ""),
+        ("width", lambda o: getattr(o, "width", "") or (getattr(o, "fabric", None) and getattr(o.fabric, "fabric_width", "")) or ""),
+        ("use_in", lambda o: getattr(o, "use_in", "") or (getattr(o, "fabric", None) and getattr(o.fabric, "use_in", "")) or ""),
+        ("unit", _unit_for),
+        ("quantity_used", lambda o: getattr(o, "quantity_used", "")),
+        ("stock", lambda o: getattr(o, "stock", "") or getattr(getattr(o, "fabric", None), "stock_in_mtrs", "") or ""),
+        ("cost_per_unit", lambda o: getattr(o, "cost_per_unit", "") or (getattr(o, "fabric", None) and getattr(o.fabric, "cost_per_unit", "")) or ""),
+        ("rate", lambda o: getattr(o, "rate", "")),
         ("vendor", vendor_name),
     ]
 
@@ -344,10 +375,8 @@ def printed_download_csv(request):
 @user_passes_test(can_manage_inventory)
 def upload_inventory_csv(request):
     """
-    Upload CSV and create Inventory rows.
-    - Uses header normalization to map provided headers to logical fields.
-    - Expects one of the canonical header sets (Accessory / Fabric / Print) in the first row.
-    - Resolves/creates vendor automatically.
+    Upload CSV and create/update Inventory rows.
+    Improved cleaning of input cells (preserve em-dash when part of real data; treat single-character placeholders as missing).
     """
     if request.method != "POST":
         form = CSVUploadForm()
@@ -365,7 +394,6 @@ def upload_inventory_csv(request):
     try:
         text = csv_file.read().decode("utf-8-sig")
     except AttributeError:
-        # file might already be a string or file-like
         try:
             data = csv_file.read()
             if isinstance(data, bytes):
@@ -404,7 +432,7 @@ def upload_inventory_csv(request):
 
     # --- normalize header names: lower + replace non-word with underscore ---
     def _normalize_header_key(s: str) -> str:
-        return re.sub(r"\W+", "_", s.strip().lower())
+        return re.sub(r"\W+", "_", s.strip().lower()) if s is not None else ""
 
     original_headers = [h for h in reader.fieldnames if h is not None]
     headers_norm_map = {}
@@ -412,35 +440,80 @@ def upload_inventory_csv(request):
         if not h:
             continue
         nk = _normalize_header_key(h)
-        headers_norm_map[nk] = h  # store mapping normalized -> original
+        headers_norm_map[nk] = h  # normalized -> original
 
-    # canonical headers you provided (normalize them the same way to create expected keys)
-    # Accessory canonical: id, name, quality, width, stock, cost_per_unit, vendor
-    ACCESSORY_CANONICAL = ["id", "name", "quality", "width", "stock", "cost_per_unit", "vendor"]
-    # Fabric canonical: id, item_name, fabric_width, quality, stock, cost_per_unit, base_color, type, use_in, vendor
-    FABRIC_CANONICAL = ["id", "item_name", "fabric_width", "quality", "stock", "cost_per_unit", "base_color", "type", "use_in", "vendor"]
-    # Print canonical: id, name, fabric_id, fabric_item_name, base_color, product_type, width, cost_per_unit, vendor
-    PRINTED_CANONICAL = ["id", "name", "fabric_id", "fabric_item_name", "base_color", "product_type", "width", "cost_per_unit", "vendor"]
+    # Small synonyms map (normalized form keys) to try when logical name isn't present
+    SYNONYMS = {
+        "cost_per_unit": ["cost_unit", "cost", "cost__unit", "cost_per_unit", "cost_unit_"],
+        "item_name": ["item", "item_name", "name", "product", "item_name_"],
+        "name": ["name", "item_name", "product"],
+        "vendor": ["vendor", "vendor_name", "supplier", "supplier_name"],
+        "stock": ["stock", "quantity", "qty", "stock_in_mtrs"],
+        "width": ["width", "fabric_width"],
+        "fabric_id": ["fabric_id", "fabric"],
+        "fabric_item_name": ["fabric_item_name", "fabric_item", "fabric_name"],
+        "product_type": ["product_type", "type"],
+        "use_in": ["use_in", "usein", "use_in_"],
+        # added synonyms for rate so CSVs using 'rate', 'price', 'unit_price' are accepted
+        "rate": ["rate", "price", "unit_price", "unitprice"],
+    }
 
     # helper: find normalized header in uploaded file and return the original header name if present
     def find_original_header(target_field_name: str):
         nk = _normalize_header_key(target_field_name)
-        return headers_norm_map.get(nk)
+        if nk in headers_norm_map:
+            return headers_norm_map[nk]
+        # try synonyms
+        alt_list = SYNONYMS.get(target_field_name, [])
+        for alt in alt_list:
+            alt_nk = _normalize_header_key(alt)
+            if alt_nk in headers_norm_map:
+                return headers_norm_map[alt_nk]
+        return None
 
     # Map logical fields -> actual header names (original)
     header_for = {}
-
-    # Build header_for mapping depending on target (but we create for all logical names we use)
     logical_fields = [
         "item_name", "name", "fabric_width", "quality", "stock", "cost_per_unit",
         "base_color", "type", "use_in", "vendor", "fabric_id", "fabric_item_name", "product_type", "width",
-        "quantity_used", "unit"
+        "quantity_used", "unit", "rate"
     ]
     for lf in logical_fields:
         header_for[lf] = find_original_header(lf)
 
-    # For printed the 'product' logical uses 'name' header per your canonical spec
+    # printed product logical uses 'name' header
     header_for["product"] = header_for.get("name") or header_for.get("item_name")
+
+    # Helper: clean cell value -> None or cleaned string
+    def clean_cell(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
+        # Remove common trailing commas/spurious punctuation and NBSPs
+        s = s.strip().rstrip(",").strip()
+        s = s.replace("\u00A0", " ").strip()  # NBSP
+
+        # If the cell is exactly a single common placeholder (hyphen/emdash/ndash) treat as missing.
+        if len(s) == 1 and s in ("-", "—", "–"):
+            return None
+
+        # normalize common "missing" tokens (multi-char tokens)
+        low = s.lower()
+        if low in ("", "na", "n/a", "none", "null"):
+            return None
+
+        # otherwise preserve the value (including emdash/ndash if part of a longer string)
+        return s
+
+    # Helper to fetch logical field value (cleaned)
+    def val_for(logical_field):
+        hdr = header_for.get(logical_field)
+        if not hdr:
+            return None
+        raw = raw_row.get(hdr)
+        return clean_cell(raw)
 
     # Required per target (logical)
     if target == "fabric":
@@ -448,7 +521,7 @@ def upload_inventory_csv(request):
     elif target == "accessory":
         required = ["name"]  # accessory uses 'name' column per your spec
     elif target == "printed":
-        required = ["name"]  # printed requires 'name' (product) (fabric linkage optional)
+        required = ["name"]
     else:
         messages.error(request, "Unknown import target.")
         return redirect(reverse("rawmaterials:inventory"))
@@ -469,11 +542,9 @@ def upload_inventory_csv(request):
     # Helper to attempt resolving a Unit model and a unit instance by name
     UnitModel = None
     try:
-        # try rawmaterials.Unit (common place)
         UnitModel = apps.get_model("rawmaterials", "Unit")
     except Exception:
         try:
-            # fallback: look for a more generic 'units' app
             UnitModel = apps.get_model("units", "Unit")
         except Exception:
             UnitModel = None
@@ -482,105 +553,123 @@ def upload_inventory_csv(request):
         with transaction.atomic():
             for row_num, raw_row in enumerate(reader, start=2):
                 # raw_row keys are original header names (as in the file)
-                # helper to fetch logical field value
-                def val_for(logical_field):
-                    hdr = header_for.get(logical_field)
-                    if not hdr:
-                        return ""
-                    return (raw_row.get(hdr) or "").strip()
-
                 try:
                     if target == "fabric":
-                        # per canonical: use 'item_name' column for fabrics
                         name = val_for("item_name") or val_for("name")
                         if not name:
                             raise ValueError("Missing 'item_name' / 'name' for fabric.")
 
-                        if Fabric.objects.filter(item_name__iexact=name).exists():
-                            skipped.append((row_num, name, "duplicate item_name"))
-                            continue
-
                         fw = _parse_decimal(val_for("fabric_width"), required=True)
-                        stock = _parse_decimal(val_for("stock"), default=Decimal("0.000"))
-                        cost = _parse_decimal(val_for("cost_per_unit"), default=Decimal("0.00"))
+                        stock = _parse_decimal(val_for("stock"), default=None)
+                        cost = _parse_decimal(val_for("cost_per_unit"), default=None)
                         quality = val_for("quality") or None
-                        base_color = val_for("base_color") or ""
-                        ftype = val_for("type") or ""
-                        use_in = val_for("use_in") or ""
+                        base_color = val_for("base_color") or None
+                        ftype = val_for("type") or None
+                        use_in = val_for("use_in") or None
                         vendor_val = val_for("vendor")
+                        vendor_obj = _get_or_create_vendor(vendor_val) if vendor_val else None
+                        if vendor_obj and vendor_obj.vendor_name not in new_vendors_created:
+                            new_vendors_created.append(vendor_obj.vendor_name)
 
-                        inst = Fabric(
-                            item_name=name.strip(),
-                            fabric_width=fw,
-                            stock_in_mtrs=stock,
-                            cost_per_unit=cost,
-                            quality=(str(quality).strip() if quality not in (None, "") else None),
-                            base_color=base_color,
-                            type=ftype,
-                            use_in=use_in,
-                        )
-
-                        vendor_obj = _get_or_create_vendor(vendor_val)
-                        if vendor_obj:
-                            setattr(inst, "vendor_id", vendor_obj.pk)
-                            if vendor_obj.vendor_name not in new_vendors_created:
-                                new_vendors_created.append(vendor_obj.vendor_name)
-
-                        to_create_objs.append(inst)
-                        if len(to_create_objs) >= BATCH:
-                            Fabric.objects.bulk_create(to_create_objs, batch_size=BATCH)
-                            created.extend([getattr(x, "item_name", "") for x in to_create_objs])
-                            to_create_objs = []
+                        existing = Fabric.objects.filter(item_name__iexact=name.strip()).first()
+                        if existing:
+                            existing.fabric_width = fw if fw is not None else existing.fabric_width
+                            if stock is not None:
+                                existing.stock_in_mtrs = stock
+                            if cost is not None:
+                                existing.cost_per_unit = cost
+                            existing.quality = (str(quality).strip() if quality not in (None, "") else existing.quality)
+                            existing.base_color = base_color or existing.base_color
+                            existing.type = ftype or existing.type
+                            existing.use_in = use_in or existing.use_in
+                            if vendor_obj:
+                                existing.vendor = vendor_obj
+                            existing.save()
+                            created.append(f"(updated) {existing.item_name}")
+                        else:
+                            inst = Fabric(
+                                item_name=name.strip(),
+                                fabric_width=fw,
+                                stock_in_mtrs=stock if stock is not None else Decimal("0.000"),
+                                cost_per_unit=cost if cost is not None else Decimal("0.00"),
+                                quality=(str(quality).strip() if quality not in (None, "") else None),
+                                base_color=base_color or "",
+                                type=ftype or "",
+                                use_in=use_in or "",
+                            )
+                            if vendor_obj:
+                                setattr(inst, "vendor_id", vendor_obj.pk)
+                            to_create_objs.append(inst)
+                            if len(to_create_objs) >= BATCH:
+                                Fabric.objects.bulk_create(to_create_objs, batch_size=BATCH)
+                                created.extend([getattr(x, "item_name", "") for x in to_create_objs])
+                                to_create_objs = []
 
                     elif target == "accessory":
-                        # accessory canonical uses 'name'
                         name = val_for("name") or val_for("item_name")
                         if not name:
                             raise ValueError("Missing 'name' for accessory (CSV header should include 'name').")
 
-                        if Accessory.objects.filter(item_name__iexact=name).exists():
-                            skipped.append((row_num, name, "duplicate item_name"))
-                            continue
+                        # clean numeric-ish inputs first (clean_cell removed commas/trailing commas)
+                        width_raw = val_for("width")
+                        width = _parse_decimal(width_raw, default=None) if width_raw is not None else None
 
-                        width = _parse_decimal(val_for("width"), default=None)
-                        stock = _parse_decimal(val_for("stock"), default=Decimal("0.000"))
-                        cost = _parse_decimal(val_for("cost_per_unit"), default=Decimal("0.00"))
+                        stock_raw = val_for("stock")
+                        stock = _parse_decimal(stock_raw, default=None) if stock_raw is not None else None
+
+                        cost_raw = val_for("cost_per_unit")
+                        cost = _parse_decimal(cost_raw, default=None) if cost_raw is not None else None
+
                         quality = val_for("quality") or None
-                        base_color = val_for("base_color") or ""
-                        item_type = val_for("type") or ""
-                        use_in = val_for("use_in") or ""
+                        base_color = val_for("base_color") or None
+                        item_type = val_for("type") or None
+                        use_in = val_for("use_in") or None
+
                         vendor_val = val_for("vendor")
+                        vendor_obj = _get_or_create_vendor(vendor_val) if vendor_val else None
+                        if vendor_obj and vendor_obj.vendor_name not in new_vendors_created:
+                            new_vendors_created.append(vendor_obj.vendor_name)
 
-                        inst = Accessory(
-                            item_name=name.strip(),
-                            width=width,
-                            stock=stock,
-                            cost_per_unit=cost,
-                            quality=(str(quality).strip() if quality not in (None, "") else None),
-                            base_color=base_color,
-                            item_type=item_type,
-                            use_in=use_in,
-                        )
-
-                        vendor_obj = _get_or_create_vendor(vendor_val)
-                        if vendor_obj:
-                            setattr(inst, "vendor_id", vendor_obj.pk)
-                            if vendor_obj.vendor_name not in new_vendors_created:
-                                new_vendors_created.append(vendor_obj.vendor_name)
-
-                        to_create_objs.append(inst)
-                        if len(to_create_objs) >= BATCH:
-                            Accessory.objects.bulk_create(to_create_objs, batch_size=BATCH)
-                            created.extend([getattr(x, "item_name", "") for x in to_create_objs])
-                            to_create_objs = []
+                        existing = Accessory.objects.filter(item_name__iexact=name.strip()).first()
+                        if existing:
+                            if width is not None:
+                                existing.width = width
+                            if stock is not None:
+                                existing.stock = stock
+                            if cost is not None:
+                                existing.cost_per_unit = cost
+                            existing.quality = (str(quality).strip() if quality not in (None, "") else existing.quality)
+                            existing.base_color = base_color or existing.base_color
+                            existing.item_type = item_type or existing.item_type
+                            existing.use_in = use_in or existing.use_in
+                            if vendor_obj:
+                                existing.vendor = vendor_obj
+                            existing.save()
+                            created.append(f"(updated) {existing.item_name}")
+                        else:
+                            inst = Accessory(
+                                item_name=name.strip(),
+                                width=width,
+                                stock=stock if stock is not None else Decimal("0.000"),
+                                cost_per_unit=cost if cost is not None else Decimal("0.00"),
+                                quality=(str(quality).strip() if quality not in (None, "") else None),
+                                base_color=base_color or "",
+                                item_type=item_type or "",
+                                use_in=use_in or "",
+                            )
+                            if vendor_obj:
+                                setattr(inst, "vendor_id", vendor_obj.pk)
+                            to_create_objs.append(inst)
+                            if len(to_create_objs) >= BATCH:
+                                Accessory.objects.bulk_create(to_create_objs, batch_size=BATCH)
+                                created.extend([getattr(x, "item_name", "") for x in to_create_objs])
+                                to_create_objs = []
 
                     elif target == "printed":
-                        # printed canonical uses 'name' for product
                         product_name = val_for("name")
                         if not product_name:
                             raise ValueError("Missing 'name' for printed product.")
 
-                        # fabric linkage: prefer fabric_id column, fallback to fabric_item_name
                         fabric_obj = None
                         fid_val = val_for("fabric_id") or val_for("fabric")
                         if fid_val:
@@ -594,142 +683,142 @@ def upload_inventory_csv(request):
                             if fab_name:
                                 fabric_obj = Fabric.objects.filter(item_name__iexact=fab_name).first()
 
-                        # duplicate check: same product name + same fabric (if provided)
-                        dup_qs = Printed.objects.filter(product__iexact=product_name.strip())
-                        if fabric_obj:
-                            dup_qs = dup_qs.filter(fabric=fabric_obj)
-                        if dup_qs.exists():
-                            skipped.append((row_num, product_name, "duplicate printed (product+fabric)"))
-                            continue
-
-                        base_color = val_for("base_color") or ""
-                        product_type = val_for("product_type") or val_for("type") or ""
-                        width = _parse_decimal(val_for("width"), default=None)
-                        cost = _parse_decimal(val_for("cost_per_unit"), default=Decimal("0.00"))
-                        quantity_used = _parse_decimal(val_for("quantity_used"), default=None)
-                        # If quantity missing or not positive, use a small positive default so model validation passes
-                        if quantity_used is None or quantity_used <= Decimal("0"):
-                            quantity_used = Decimal("0.001")
-
-                        stock = _parse_decimal(val_for("stock"), default=Decimal("0.000"))
-                        rate = _parse_decimal(val_for("rate"), default=Decimal("0.00"))
+                        base_color = val_for("base_color") or None
+                        product_type = val_for("product_type") or val_for("type") or None
+                        width = _parse_decimal(val_for("width"), default=None) if val_for("width") is not None else None
+                        cost = _parse_decimal(val_for("cost_per_unit"), default=None) if val_for("cost_per_unit") is not None else None
+                        quantity_used = _parse_decimal(val_for("quantity_used"), default=None) if val_for("quantity_used") is not None else None
+                        if quantity_used is None or (isinstance(quantity_used, Decimal) and quantity_used <= Decimal("0")):
+                            quantity_used_default_for_create = Decimal("0.001")
+                        else:
+                            quantity_used_default_for_create = quantity_used
+                        stock = _parse_decimal(val_for("stock"), default=None) if val_for("stock") is not None else None
+                        rate = _parse_decimal(val_for("rate"), default=None) if val_for("rate") is not None else None
                         quality = val_for("quality") or None
                         unit_val = val_for("unit") or None
                         vendor_val = val_for("vendor")
+                        vendor_obj = _get_or_create_vendor(vendor_val) if vendor_val else None
+                        if vendor_obj and vendor_obj.vendor_name not in new_vendors_created:
+                            new_vendors_created.append(vendor_obj.vendor_name)
 
-                        # create Printed instance WITHOUT forcing unit to None so model default remains
-                        printed_inst = Printed(
-                            product=product_name.strip(),
-                            fabric=fabric_obj,
-                            base_color=base_color,
-                            product_type=product_type,
-                            width=width,
-                            use_in=(val_for("use_in") or ""),
-                            quality=(str(quality).strip() if quality not in (None, "") else None),
-                            quantity_used=quantity_used,
-                            stock=stock,
-                            cost_per_unit=cost,
-                            rate=rate,
-                        )
+                        dup_qs = Printed.objects.filter(product__iexact=product_name.strip())
+                        if fabric_obj:
+                            dup_qs = dup_qs.filter(fabric=fabric_obj)
+                        existing = dup_qs.first()
 
-                        # Normalize and set unit robustly
-                        if unit_val:
-                            u_raw = str(unit_val).strip().lower()
+                        def _normalize_unit(u):
+                            if not u:
+                                return None
+                            um = str(u).strip().lower()
+                            if um in ("m", "meter", "meters", "metre", "metres"):
+                                return "m"
+                            if um in ("cm", "centimeter", "centimetre", "centimeters", "centimetres"):
+                                return "cm"
+                            if um in ("ft", "feet", "foot"):
+                                return "ft"
+                            return None
+
+                        if existing:
+                            if fabric_obj:
+                                existing.fabric = fabric_obj
+                            if base_color is not None:
+                                existing.base_color = base_color
+                            if product_type is not None:
+                                existing.product_type = product_type
+                            if width is not None:
+                                existing.width = width
+                            if cost is not None:
+                                existing.cost_per_unit = cost
+                            if quantity_used is not None:
+                                existing.quantity_used = quantity_used
+                            if stock is not None:
+                                existing.stock = stock
+                            if rate is not None:
+                                existing.rate = rate
+                            if quality not in (None, ""):
+                                existing.quality = str(quality).strip()
+                            if vendor_obj:
+                                existing.vendor = vendor_obj
+                            if unit_val:
+                                ucode = _normalize_unit(unit_val)
+                                if ucode:
+                                    existing.unit = ucode
+                                else:
+                                    if UnitModel is not None:
+                                        try:
+                                            uobj = UnitModel.objects.filter(name__iexact=unit_val.strip()).first()
+                                            if uobj:
+                                                cand = getattr(uobj, "code", None) or getattr(uobj, "symbol", None) or getattr(uobj, "name", None)
+                                                if cand:
+                                                    uc = str(cand).strip().lower()
+                                                    if uc in ("m", "cm", "ft"):
+                                                        existing.unit = uc
+                                        except Exception:
+                                            pass
+                            try:
+                                existing.full_clean()
+                                existing.save()
+                                created.append(f"(updated) {existing.product}")
+                            except Exception as e:
+                                errors.append((row_num, f"Validation error updating printed '{product_name}': {e}"))
                         else:
-                            u_raw = ""
+                            printed_inst = Printed(
+                                product=product_name.strip(),
+                                fabric=fabric_obj,
+                                base_color=base_color or "",
+                                product_type=product_type or "",
+                                width=width,
+                                use_in=(val_for("use_in") or ""),
+                                quality=(str(quality).strip() if quality not in (None, "") else None),
+                                quantity_used=quantity_used_default_for_create,
+                                stock=stock if stock is not None else Decimal("0.000"),
+                                cost_per_unit=cost if cost is not None else Decimal("0.00"),
+                                rate=rate if rate is not None else Decimal("0.00"),
+                            )
 
-                        # mapping from friendly words to model codes
-                        unit_map = {
-                            "m": "m", "meter": "m", "meters": "m", "metre": "m", "metres": "m",
-                            "cm": "cm", "centimeter": "cm", "centimetre": "cm", "centimeters": "cm", "centimetres": "cm",
-                            "ft": "ft", "foot": "ft", "feet": "ft"
-                        }
-
-                        # Try numeric id if provided and UnitModel exists
-                        unit_set = False
-                        # 1) if numeric and UnitModel exists -> attempt to get that unit
-                        if u_raw:
-                            try:
-                                uid_try = int(u_raw)
-                                if UnitModel is not None:
-                                    try:
-                                        unit_obj = UnitModel.objects.filter(pk=uid_try).first()
-                                        if unit_obj:
-                                            # attempt to derive a code from unit_obj
-                                            cand = getattr(unit_obj, "code", None) or getattr(unit_obj, "symbol", None) or getattr(unit_obj, "name", None)
-                                            if cand:
-                                                cand = str(cand).strip().lower()
-                                                mapped = unit_map.get(cand, None)
-                                                if mapped:
-                                                    printed_inst.unit = mapped
-                                                    unit_set = True
-                                                else:
-                                                    # if cand is already a code like 'm' set directly
-                                                    if cand in ("m", "cm", "ft"):
-                                                        printed_inst.unit = cand
-                                                        unit_set = True
-                                    except Exception:
-                                        pass
-                            except Exception:
-                                # not numeric, try mapping friendly names
-                                pass
-
-                        # 2) map friendly text to codes
-                        if not unit_set and u_raw:
-                            mapped = unit_map.get(u_raw)
-                            if mapped:
-                                printed_inst.unit = mapped
-                                unit_set = True
+                            ucode = _normalize_unit(unit_val)
+                            if ucode:
+                                printed_inst.unit = ucode
                             else:
-                                # 3) try UnitModel name lookup if available
-                                if UnitModel is not None:
+                                if unit_val:
                                     try:
-                                        unit_obj = UnitModel.objects.filter(name__iexact=unit_val.strip()).first()
-                                        if unit_obj:
-                                            cand = getattr(unit_obj, "code", None) or getattr(unit_obj, "symbol", None) or getattr(unit_obj, "name", None)
-                                            if cand:
-                                                cand = str(cand).strip().lower()
-                                                mapped2 = unit_map.get(cand, None)
-                                                if mapped2:
-                                                    printed_inst.unit = mapped2
-                                                    unit_set = True
-                                                else:
+                                        uid_try = int(str(unit_val).strip())
+                                        if UnitModel is not None:
+                                            uobj = UnitModel.objects.filter(pk=uid_try).first()
+                                            if uobj:
+                                                cand = getattr(uobj, "code", None) or getattr(uobj, "symbol", None) or getattr(uobj, "name", None)
+                                                if cand:
+                                                    cand = str(cand).strip().lower()
                                                     if cand in ("m", "cm", "ft"):
                                                         printed_inst.unit = cand
-                                                        unit_set = True
                                     except Exception:
-                                        pass
+                                        if UnitModel is not None:
+                                            try:
+                                                uobj = UnitModel.objects.filter(name__iexact=unit_val.strip()).first()
+                                                if uobj:
+                                                    cand = getattr(uobj, "code", None) or getattr(uobj, "symbol", None) or getattr(uobj, "name", None)
+                                                    if cand:
+                                                        cand = str(cand).strip().lower()
+                                                        if cand in ("m", "cm", "ft"):
+                                                            printed_inst.unit = cand
+                                            except Exception:
+                                                pass
 
-                        # 4) fallback: if still not set, ensure model default applies (do not set unit to None)
-                        if not unit_set:
+                            if vendor_obj:
+                                setattr(printed_inst, "vendor_id", vendor_obj.pk)
+
                             try:
-                                # ensure printed_inst has a valid code; use model default ('m') if missing
-                                current_unit = getattr(printed_inst, "unit", None)
-                                if not current_unit:
-                                    printed_inst.unit = "m"
-                            except Exception:
-                                printed_inst.unit = "m"
-
-                        # Resolve/create vendor
-                        vendor_obj = _get_or_create_vendor(vendor_val)
-                        if vendor_obj:
-                            setattr(printed_inst, "vendor_id", vendor_obj.pk)
-                            if vendor_obj.vendor_name not in new_vendors_created:
-                                new_vendors_created.append(vendor_obj.vendor_name)
-
-                        # validate minimal constraints
-                        try:
-                            printed_inst.full_clean()
-                        except Exception as ve:
-                            raise ValueError(f"Validation error: {ve}")
-
-                        printed_inst.save()
-                        created.append(getattr(printed_inst, "product", "") or str(printed_inst))
+                                printed_inst.full_clean()
+                                printed_inst.save()
+                                created.append(getattr(printed_inst, "product", "") or str(printed_inst))
+                            except Exception as e:
+                                errors.append((row_num, f"Validation error creating printed '{product_name}': {e}"))
 
                     else:
                         raise ValueError("Unsupported target")
 
                 except Exception as row_exc:
+                    # include row number for debugging
                     errors.append((row_num, str(row_exc)))
                     # continue processing remaining rows
 
@@ -749,7 +838,7 @@ def upload_inventory_csv(request):
     # Build summary
     summary_parts = []
     if created:
-        summary_parts.append(f"Created {len(created)} rows.")
+        summary_parts.append(f"Created/Updated {len(created)} rows.")
     if skipped:
         summary_parts.append(f"Skipped {len(skipped)} rows (duplicates).")
     if errors:
@@ -893,10 +982,6 @@ def printed_edit(request, pk):
 @user_passes_test(can_delete_inventory)
 @require_POST
 def inventory_delete(request, pk):
-    """
-    Delete an inventory object (Accessory, Fabric, or Printed) by pk.
-    Deletes related Printed items if a Fabric is deleted.
-    """
     instance = None
     model_label = None
 

@@ -41,23 +41,27 @@
     <tbody>
       {% for acc in accessories %}
         <tr>
+          {# Item Name #}
           <td>{{ acc.item_name }}</td>
 
+          {# Quality: prefer quality_text then quality (show raw string so textual values appear) #}
           <td>
-            {% if acc.transient_quality %}
-              {{ acc.transient_quality }}
-            {% elif acc.quality_text %}
+            {% if acc.quality_text %}
               {{ acc.quality_text }}
             {% elif acc.quality %}
-              {{ acc.quality|floatformat:2 }}
+              {{ acc.quality }}
             {% else %}
               &mdash;
             {% endif %}
           </td>
 
+          {# Base Color #}
           <td>{{ acc.base_color|default:"—" }}</td>
+
+          {# Type (item_type) #}
           <td>{{ acc.item_type|default:"—" }}</td>
 
+          {# Width (decimal) #}
           <td class="text-nowrap">
             {% if acc.width is not None %}
               {{ acc.width|floatformat:2 }}
@@ -66,16 +70,20 @@
             {% endif %}
           </td>
 
+          {# Use In #}
           <td>{{ acc.use_in|default:"—" }}</td>
 
+          {# Stock (right aligned, 3 decimals) #}
           <td class="text-end">
             {{ acc.stock|default_if_none:0|floatformat:3 }}
           </td>
 
+          {# Cost per unit (right aligned, 2 decimals) #}
           <td class="text-end">
             {{ acc.cost_per_unit|default_if_none:0|floatformat:2 }}
           </td>
 
+          {# Vendor: show vendor_name if present, else dash #}
           <td>
             {% if acc.vendor %}
               {{ acc.vendor.vendor_name }}
@@ -84,6 +92,7 @@
             {% endif %}
           </td>
 
+          {# Actions (Edit / Delete) #}
           {% if can_edit or can_delete %}
             <td class="text-center">
               {% if can_edit %}

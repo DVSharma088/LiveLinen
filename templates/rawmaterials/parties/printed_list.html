@@ -31,6 +31,7 @@
             <th>Type</th>
             <th>Width</th>
             <th>Use In</th>
+            <th>Unit</th>
             <th class="text-end">Quantity Used</th>
             <th class="text-end">Stock</th>
             <th class="text-end">Cost / Unit</th>
@@ -48,13 +49,13 @@
               <td>{{ p.product }}</td>
               <td>{% if p.fabric %}{{ p.fabric.item_name }}{% else %}-{% endif %}</td>
 
-              {# Quality: prefer Printed.quality, fallback to Fabric.quality #}
+              {# Quality: show raw value (allow strings). Fallback to fabric.quality if printed.quality is None. #}
               <td>
                 {% if p.quality is not None %}
-                  {{ p.quality|floatformat:2 }}
+                  {{ p.quality }}
                 {% else %}
                   {% if p.fabric and p.fabric.quality is not None %}
-                    {{ p.fabric.quality|floatformat:2 }}
+                    {{ p.fabric.quality }}
                   {% else %}
                     -
                   {% endif %}
@@ -80,7 +81,7 @@
                   {% if p.fabric and p.fabric.type %}
                     {{ p.fabric.type }}
                   {% else %}
-                    -
+                    - 
                   {% endif %}
                 {% endif %}
               </td>
@@ -103,6 +104,19 @@
                 {% else %}
                   {% if p.fabric and p.fabric.use_in %}
                     {{ p.fabric.use_in }}
+                  {% else %}
+                    -
+                  {% endif %}
+                {% endif %}
+              </td>
+
+              {# Unit: prefer Printed.unit, fallback to Fabric.unit #}
+              <td>
+                {% if p.unit %}
+                  {{ p.unit }}
+                {% else %}
+                  {% if p.fabric and p.fabric.unit %}
+                    {{ p.fabric.unit }}
                   {% else %}
                     -
                   {% endif %}
@@ -162,7 +176,7 @@
             </tr>
           {% empty %}
             <tr>
-              <td colspan="{% if can_edit or can_delete %}13{% else %}12{% endif %}" class="text-center text-muted py-3">
+              <td colspan="{% if can_edit or can_delete %}14{% else %}13{% endif %}" class="text-center text-muted py-3">
                 No printed items found.
               </td>
             </tr>

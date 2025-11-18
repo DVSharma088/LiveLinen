@@ -59,9 +59,10 @@
       <li><strong>First row is the header:</strong> the importer reads the first row as column names and maps them to the expected fields.</li>
       <li>File must be a UTF-8 encoded <code>.csv</code>. (If using Excel, choose "CSV UTF-8".)</li>
       <li>Small-to-medium imports are handled synchronously. The view will <strong>skip duplicates</strong> by key (see each target below).</li>
-      <li>Vendor column may be a numeric <code>vendor_id</code> (preferred) or a vendor name — numeric IDs will be used to set <code>vendor_id</code>. If a vendor name is provided and not found, a new Vendor will be created.</li>
+      <li>Vendor column may be a numeric <code>vendor_id</code> (preferred) or a vendor name — numeric IDs will be used to set <code>vendor_id</code>. If a vendor name is provided and not found, a new Vendor will be created (unless vendor is left blank).</li>
       <li>Delimiter is detected automatically (comma/semicolon/tab/pipe), but you should use comma (`,` ) when possible.</li>
       <li>Required headers depend on the target (see canonical header examples below).</li>
+      <li><strong>Important:</strong> avoid using placeholder em-dash/ndash characters (— / –) in cells. Replace them with blank cells or real values — the importer treats single-character placeholders as missing.</li>
     </ul>
   </div>
 
@@ -89,14 +90,14 @@ Red Linen,40.00,A1,Red,50.000,180.00,Linen,Dresses,2</pre>
         <div class="card-body">
           <h6>Accessory — canonical headers</h6>
           <p class="small mb-1"><strong>Canonical (first-row) header order (example):</strong></p>
-          <pre class="small">id, name, quality, width, stock, cost_per_unit, vendor</pre>
+          <pre class="small">id, name, quality, base_color, type, width, use_in, stock, cost_per_unit, vendor</pre>
           <p class="small mb-1"><strong>Required:</strong> <code>name</code></p>
           <p class="small mb-1"><strong>Duplicate detection:</strong> exact <code>name</code> → stored to <code>item_name</code> (case-insensitive)</p>
           <hr/>
           <div class="small">
-<pre>name,quality,width,stock,cost_per_unit,vendor
-Metal Button,A,0.50,1000,0.50,3
-Zipper,90,1.00,200,15.00,4</pre>
+<pre>name,quality,base_color,type,width,use_in,stock,cost_per_unit,vendor
+Metal Button,A,Silver,Button,0.50,Shirts,1000,0.50,3
+Zipper,90,Black,Zipper,1.00,Jackets,200,15.00,4</pre>
           </div>
         </div>
       </div>
@@ -128,6 +129,7 @@ Floral Dress,,Red,Dress,40.00,2.000,20,350.00,400.00,"KD Prints"</pre>
       <li>If rows are skipped, check for duplicates by the key described above (exact name match, case-insensitive).</li>
       <li>If numeric parsing fails (e.g., <code>fabric_width</code>), ensure the column contains only numbers (use dot decimal: <code>44.00</code>).</li>
       <li>If your CSV headers use slightly different punctuation or spaces (e.g., <code>Base Color</code> vs <code>base_color</code>), the importer will normalize header names (lowercase and convert spaces/punctuation) but using the canonical names above avoids ambiguity.</li>
+      <li>Avoid single-character placeholder tokens like <code>-</code> or <code>—</code> in cells; use blank cells instead.</li>
       <li>Large files (> ~5MB) may be blocked by server limits. Split into smaller files if needed.</li>
     </ul>
   </div>

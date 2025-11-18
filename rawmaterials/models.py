@@ -18,6 +18,7 @@ class Fabric(models.Model):
     Fabric model updated:
       - 'quality' is a CharField (can contain 'A1', 'Fine', '350', etc).
       - 'type' is mapped to DB column 'fabric_type'.
+      - vendor is now optional (null=True, blank=True).
     """
     item_name = models.CharField(max_length=200)
     # quality as CharField to allow alphanumeric/textual values
@@ -52,7 +53,8 @@ class Fabric(models.Model):
         default=Decimal('0.00'),
         help_text='Cost per unit (per meter)'
     )
-    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='fabrics')
+    # vendor optional now
+    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='fabrics', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -60,7 +62,10 @@ class Fabric(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.item_name} ({self.vendor.vendor_name})"
+        vendor_name = getattr(self.vendor, "vendor_name", None) if self.vendor else None
+        if vendor_name:
+            return f"{self.item_name} ({vendor_name})"
+        return f"{self.item_name}"
 
     @property
     def quality_display(self):
@@ -111,8 +116,7 @@ class Accessory(models.Model):
     """
     Accessory model:
     - 'quality' is a CharField to allow text or numeric strings.
-    - 'quality_text' is a separate persistent field used to store explicit textual quality values
-      (e.g., "wooden"). This is populated by forms when user enters non-numeric quality.
+    - vendor is optional (null=True, blank=True).
     """
     item_name = models.CharField(max_length=200)
     quality = models.CharField(
@@ -122,7 +126,7 @@ class Accessory(models.Model):
         verbose_name="Quality",
         help_text='Quality can be numeric (0 - 100) or textual (e.g., "A1", "Fine").'
     )
-    # persistent textual quality (optional) — used to store freeform strings like "wooden"
+    # persistent textual quality (optional)
     quality_text = models.CharField(
         max_length=128,
         blank=True,
@@ -147,7 +151,8 @@ class Accessory(models.Model):
         validators=[MinValueValidator(Decimal('0.00'))],
         help_text='Cost per unit'
     )
-    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='accessories')
+    # vendor optional now
+    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='accessories', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -156,26 +161,28 @@ class Accessory(models.Model):
 
     def __str__(self):
         """
-        Human-friendly string representation. Prefer showing an explicit textual quality
-        (quality_text) when available so ModelChoiceField / admin displays are readable.
+        Human-friendly string representation. Handles missing vendor safely.
         Examples:
-            "Button — Plastic (Print Wala)"
+            "Button — Plastic"
             "Button (Print Wala)"
         """
         q = self.quality_display or ""
+        vendor_name = getattr(self.vendor, "vendor_name", None) if self.vendor else None
+        if q and vendor_name:
+            return f"{self.item_name} — {q} ({vendor_name})"
+        if vendor_name:
+            return f"{self.item_name} ({vendor_name})"
         if q:
-            return f"{self.item_name} — {q} ({self.vendor.vendor_name})"
-        return f"{self.item_name} ({self.vendor.vendor_name})"
+            return f"{self.item_name} — {q}"
+        return f"{self.item_name}"
 
     @property
     def quality_display(self):
         """
         Return persistent textual quality if set, otherwise fall back to the general 'quality' field.
         """
-        # prefer explicit textual quality field if present
         if self.quality_text and str(self.quality_text).strip() != "":
             return str(self.quality_text).strip()
-        # fallback to quality (which is a CharField in this design)
         return self.quality
 
     def get_quality_display(self):
@@ -218,8 +225,7 @@ class Accessory(models.Model):
 class Printed(models.Model):
     """
     Printed product produced from a Fabric.
-    - 'quality' is a CharField that inherits fabric.quality if not provided.
-    - If 'quality' is numeric (string that can be parsed to Decimal), the value is validated to be between 0 and 100.
+    - vendor is already optional here (blank=True, null=True).
     """
     product = models.CharField(max_length=200)
     fabric = models.ForeignKey(Fabric, on_delete=models.PROTECT, related_name='printeds')
