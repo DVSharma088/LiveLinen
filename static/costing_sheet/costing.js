@@ -30,7 +30,9 @@
       ajax_accessories: "/costing/ajax/accessories/",
       ajax_accessory_detail: "/costing/ajax/accessories/0/",
       ajax_accessories_bulk: "/costing/ajax/accessories/bulk/",
-      ajax_compute_accessory_line: "/costing/ajax/accessories/compute/"
+      ajax_compute_accessory_line: "/costing/ajax/accessories/compute/",
+      ajax_compute_sku: "/costing/ajax/compute-sku/",
+      components_colors_url: "/components/colors-list-json/"
     };
     var cfg = parseJSONFromEl("costing-config") || {};
     return {
@@ -39,7 +41,9 @@
       ajax_accessories: cfg.ajax_accessories || defaults.ajax_accessories,
       ajax_accessory_detail: cfg.ajax_accessory_detail || defaults.ajax_accessory_detail,
       ajax_accessories_bulk: cfg.ajax_accessories_bulk || defaults.ajax_accessories_bulk,
-      ajax_compute_accessory_line: cfg.ajax_compute_accessory_line || defaults.ajax_compute_accessory_line
+      ajax_compute_accessory_line: cfg.ajax_compute_accessory_line || defaults.ajax_compute_accessory_line,
+      ajax_compute_sku: cfg.ajax_compute_sku || defaults.ajax_compute_sku,
+      components_colors_url: cfg.components_colors_url || defaults.components_colors_url
     };
   }
 
@@ -89,7 +93,7 @@
     } catch (e) { warn("ajaxPostJSON failure", e); cb && cb(null, e); }
   }
 
-  /* ---------- DOM refs (matching the reordered template) ---------- */
+  /* ---------- DOM refs (matching the template) ---------- */
   var categorySelect = $("id_category_select") || document.querySelector("select[name='category']");
   var componentSelect = $("id_component_master_select") || document.querySelector("select[name='component_master']");
   var el_width = $("id_width");
@@ -97,7 +101,7 @@
   var el_price_sqft = $("id_price_per_sqft");
   var el_final_cost = $("id_final_cost");
 
-  // new - Category Master (New) UI elements
+  // Category Master (New) UI elements
   var catNewSelect = $("id_category_master_new_select");
   var sizeSelect = $("id_size_master_select");
   var newStitch = $("id_new_stitching");
@@ -114,11 +118,16 @@
   var accessoryLineTotalHidden = $("id_accessory_line_total") || document.querySelector("input[name='accessory_line_total']");
   var accessoryStockDisplay = $("id_accessory_stock_display") || null;
 
-  // new simple fields we added to template
-  var colorEl = $("id_color");
+  // color handling: support both single <input/select id="id_color"> (legacy) and component color container (checkboxes)
+  var legacyColorField = $("id_color"); // if template kept a text input this will exist
+  var colorSelect = $("id_color_select") || null; // if template uses a select with this id
+  var colorEl = legacyColorField || colorSelect;
+  var colorsContainer = $("component-colors"); // area where multi-color checkboxes will be rendered
+  var skuInput = $("id_sku");
+  var skuPreviewList = $("sku-preview-list") || $("sku-preview-list") || $("sku-preview-list"); // fallback
   var handworkEl = $("id_handwork");
 
-  /* ---------- helpers for new section ---------- */
+  /* ---------- small helpers ---------- */
   function clearSelect(sel, placeholder) {
     if (!sel) return;
     sel.innerHTML = "";
@@ -136,7 +145,6 @@
       Object.keys(data).forEach(function (k) {
         try {
           if (data[k] === undefined || data[k] === null) return;
-          // store on dataset for quick client-side use
           o.dataset[k] = String(data[k]);
           o.setAttribute("data-" + k, String(data[k]));
         } catch (e) {}
@@ -165,6 +173,7 @@
     } catch (e) { return null; }
   }
 
+  /* ---------- Category Master (New) population ---------- */
   function populateCatNewSelectFromMaster() {
     if (!catNewSelect) return;
     clearSelect(catNewSelect, "-- select category master --");
@@ -176,15 +185,13 @@
         var name = (c && (c.name || c.title || c.label)) || (typeof c === "string" ? c : String(c || id));
         addOption(catNewSelect, id, name, c);
       });
-      // try selecting a prefilled value (server may have initial)
       try {
         var pref = (catNewSelect.getAttribute && catNewSelect.getAttribute("data-initial")) || catNewSelect.value || "";
         if (!pref) autoSelectFirstRealOption(catNewSelect);
       } catch (e) {}
       return;
     }
-
-    // fallback: use server rendered options (do nothing)
+    // fallback: do nothing, server-rendered options may exist
   }
 
   function populateSizeSelectForCategory(catId) {
@@ -192,9 +199,8 @@
     clearSelect(sizeSelect, "-- select size --");
     if (!catId) return;
 
-    // prefer master.sizes_by_category if present
     var sizesMap = (master && master.sizes_by_category) ? master.sizes_by_category : {};
-    var arr = sizesMap[String(catId)] || sizesMap[catId] || sizesMap[String(catId).toLowerCase()] || [];
+    var arr = sizesMap[String(catId)] || sizesMap[catId] || [];
 
     if (Array.isArray(arr) && arr.length) {
       arr.forEach(function (r) {
@@ -237,7 +243,6 @@
     if (newFinish) newFinish.value = fmt2(finish);
     if (newPack) newPack.value = fmt2(pack);
 
-    // ensure the shared computeAll (in template) runs to reflect changed S/F/P if any formula uses them
     triggerComputeIfPresent();
   }
 
@@ -262,7 +267,6 @@
       setSFPTotalsFromSizeObj(null);
       return;
     }
-    // try to read dataset on option (populated earlier)
     try {
       var opt = sizeSelect.options[sizeSelect.selectedIndex];
       if (opt && opt.dataset && Object.keys(opt.dataset || {}).length) {
@@ -279,7 +283,6 @@
       }
     } catch (e) {}
 
-    // try master.sizes_by_category
     try {
       var categories = master.categories || [];
       var catVal = (catNewSelect && catNewSelect.value) || null;
@@ -294,7 +297,6 @@
       }
     } catch (e) {}
 
-    // fallback: ask server
     if (cfg.ajax_category_details) {
       var url = cfg.ajax_category_details + "?size_id=" + encodeURIComponent(val);
       ajaxGet(url, function (payload) {
@@ -344,6 +346,15 @@
     try { if (el_price_sqft) el_price_sqft.value = fmt4(byId.price_per_sqft || byId.price_per_sqfoot || 0); } catch (e) {}
     try { if (el_final_cost) el_final_cost.value = fmt2(byId.final_cost || byId.finalPrice || 0); } catch (e) {}
     triggerComputeIfPresent();
+
+    // If the master component object contains colors, populate them synchronously
+    try {
+      if (byId.colors || byId.available_colors || byId.color_list) {
+        var colorData = byId.colors || byId.available_colors || byId.color_list;
+        populateColorWidgetsFromArray(colorData);
+      }
+    } catch (e) { /* ignore */ }
+
     return true;
   }
 
@@ -355,21 +366,55 @@
       if (el_price_sqft) el_price_sqft.value = "0.0000";
       if (el_final_cost) el_final_cost.value = "0.00";
       triggerComputeIfPresent();
+      // clear colors
+      populateColorWidgetsFromArray([]);
       return;
     }
     try {
-      if (tryFillComponentFromMasterById(compVal)) { return; }
+      if (tryFillComponentFromMasterById(compVal)) { 
+        // if master provided color list, we already filled; still try server for freshest details
+      }
     } catch (e) {}
+
     var url = cfg.ajax_component_details + "?component_id=" + encodeURIComponent(compVal);
     ajaxGet(url, function (payload) {
-      if (!payload || !payload.component) { triggerComputeIfPresent(); return; }
-      var comp = payload.component;
+      if (!payload) { triggerComputeIfPresent(); return; }
+      var comp = payload.component || payload || null;
+      if (!comp) { triggerComputeIfPresent(); return; }
+
       try { if (el_width) el_width.value = fmt2(comp.width || 0); } catch (e) {}
       try { if (el_width_uom) el_width_uom.value = comp.width_uom || "inch"; } catch (e) {}
       try { if (el_price_sqft) el_price_sqft.value = fmt4(comp.price_per_sqfoot || comp.price_per_sqft || 0); } catch (e) {}
       try { if (el_final_cost) el_final_cost.value = fmt2(comp.final_cost || 0); } catch (e) {}
       triggerComputeIfPresent();
+
+      // Try to populate colors from this component payload (preferred)
+      try {
+        var colorsArr = comp.colors || comp.available_colors || comp.color_list || comp.colors_list || comp.color_options || null;
+        if (colorsArr && Array.isArray(colorsArr) && colorsArr.length) {
+          populateColorWidgetsFromArray(colorsArr);
+        } else {
+          // fallback: some endpoints return { results: [...] } or { items: [...] }
+          var fallback = comp.results || comp.items || comp.data || null;
+          if (Array.isArray(fallback) && fallback.length) {
+            populateColorWidgetsFromArray(fallback);
+          } else {
+            // last resort: ask components_colors_url if configured
+            fetchColorsForComponent(compVal);
+          }
+        }
+      } catch (e) {
+        // ensure we still attempt server-side color fetch if payload parsing fails
+        fetchColorsForComponent(compVal);
+      }
     });
+
+    // also trigger an async color fetch (this function can hit a dedicated endpoint)
+    try {
+      fetchColorsForComponent(compVal);
+    } catch (e) {
+      warn("fetchColorsForComponent failed", e);
+    }
   }
 
   function fillFieldsFromCategorySource(src) {
@@ -419,7 +464,7 @@
     });
   }
 
-  /* ---------- accessory code preserved & adapted ---------- */
+  /* ---------- accessory code (unchanged) ---------- */
   function accessoryLabel(a) {
     if (!a) return "";
     if (a.text) return String(a.text);
@@ -442,6 +487,7 @@
     }
     sel.appendChild(o);
   }
+
   function populateAccessoryDropdown(qstr) {
     if (!accessorySelect) return;
     clearOptions(accessorySelect, "-- select accessory --");
@@ -548,7 +594,6 @@
           var line = (unit * qty);
           if (accessoryLineTotalDisplay) accessoryLineTotalDisplay.value = fmt2(line);
           if (accessoryLineTotalHidden) accessoryLineTotalHidden.value = fmt2(line);
-          // ensure computeAll is called so new_final_price updates
           triggerComputeIfPresent();
           return;
         }
@@ -558,7 +603,6 @@
         if (accessoryUnitPriceHidden) accessoryUnitPriceHidden.value = fmt2(unit_price);
         if (accessoryLineTotalDisplay) accessoryLineTotalDisplay.value = fmt2(line_total);
         if (accessoryLineTotalHidden) accessoryLineTotalHidden.value = fmt2(line_total);
-        // ensure computeAll updates now that accessory line changed
         triggerComputeIfPresent();
       });
       return;
@@ -568,7 +612,6 @@
     var line = (unit * qty);
     if (accessoryLineTotalDisplay) accessoryLineTotalDisplay.value = fmt2(line);
     if (accessoryLineTotalHidden) accessoryLineTotalHidden.value = fmt2(line);
-    // ensure computeAll updates now that accessory line changed
     triggerComputeIfPresent();
   }
 
@@ -590,6 +633,269 @@
     onAccessoryQtyChange({ target: accessoryQuantityEl });
   }
 
+  /* ---------- multi-color fetching + SKU preview ---------- */
+
+  // Render a friendly "no colors" state
+  function renderNoColors() {
+    if (colorsContainer) {
+      colorsContainer.innerHTML = '<small class="text-muted">No active colors for this quality.</small>';
+    }
+    // If there is a select used for color, reset it
+    if (colorSelect) {
+      clearSelect(colorSelect, "-- select color --");
+    } else if (legacyColorField) {
+      // restore legacy single text input visibility
+      legacyColorField.style.display = '';
+      legacyColorField.value = legacyColorField.getAttribute('data-initial') || '';
+    }
+    if (skuPreviewList) skuPreviewList.innerHTML = '<small class="text-muted">No colors selected</small>';
+    if (skuInput) skuInput.value = '';
+  }
+
+  // Accepts an array of color-like objects or strings and populates both:
+  // - a simple <select id="id_color_select"> (if present) for single-choice UI
+  // - the colorsContainer (checkboxes) for multi-select SKU previews
+  function populateColorWidgetsFromArray(arr) {
+    // Normalize array: items may be strings or {id, name/text,label}
+    var normalized = [];
+    if (!Array.isArray(arr)) arr = [];
+    arr.forEach(function (c) {
+      try {
+        if (!c && c !== 0) return;
+        if (typeof c === 'string' || typeof c === 'number') {
+          normalized.push({ id: String(c), name: String(c) });
+        } else if (typeof c === 'object') {
+          var id = c.id || c.pk || c.value || c.key || c.code || c.name;
+          var name = c.name || c.text || c.label || String(id);
+          normalized.push({ id: String(id), name: String(name) });
+        }
+      } catch (e) { /* skip bad entries */ }
+    });
+
+    // Populate select if present
+    if (colorSelect) {
+      try {
+        clearSelect(colorSelect, "-- select color --");
+        normalized.forEach(function (it) {
+          addOption(colorSelect, it.id, it.name, it);
+        });
+        autoSelectFirstRealOption(colorSelect);
+        // hide legacy text input if select exists
+        if (legacyColorField && legacyColorField !== colorSelect) legacyColorField.style.display = 'none';
+      } catch (e) { warn("populateColorWidgetsFromArray (select) failed", e); }
+    }
+
+    // Populate checkboxes area if present
+    if (colorsContainer) {
+      try {
+        // clear
+        colorsContainer.innerHTML = '';
+        if (!normalized.length) {
+          renderNoColors();
+          return;
+        }
+        var wrapper = document.createElement('div');
+        wrapper.className = 'component-color-list';
+        normalized.forEach(function (it) {
+          try {
+            var id = it.id || it.name;
+            var name = it.name || id;
+            var boxId = 'component-color-' + id;
+            var item = document.createElement('div');
+            item.className = 'component-color-item';
+            var input = document.createElement('input');
+            input.type = 'checkbox';
+            input.name = 'colors[]';
+            input.value = id;
+            input.id = boxId;
+            input.dataset.colorName = name;
+            input.addEventListener('change', onColorCheckboxChange);
+            var label = document.createElement('label');
+            label.htmlFor = boxId;
+            label.style.marginLeft = '0.25rem';
+            label.textContent = name;
+            item.appendChild(input);
+            item.appendChild(label);
+            wrapper.appendChild(item);
+          } catch (e) {}
+        });
+        colorsContainer.appendChild(wrapper);
+        // hide legacy single color input (if any)
+        if (legacyColorField && !colorSelect) legacyColorField.style.display = 'none';
+        if (skuPreviewList) skuPreviewList.innerHTML = '<small class="text-muted">No colors selected</small>';
+      } catch (e) { warn("populateColorWidgetsFromArray (container) failed", e); }
+    }
+
+    // If neither UI area exists, fallback: populate legacy text input with first color
+    if (!colorSelect && !colorsContainer && legacyColorField) {
+      try {
+        legacyColorField.style.display = '';
+        legacyColorField.value = (normalized[0] && normalized[0].name) ? normalized[0].name : (normalized[0] && normalized[0].id ? normalized[0].id : '');
+      } catch (e) {}
+    }
+  }
+
+  // Fetch colors for a component/quality (component_id query param), expects result.results = [{id, name/text}, ...]
+  function fetchColorsForComponent(componentId) {
+    // If we already handled population from master or component details, short-circuit if not configured
+    if (!componentId) {
+      renderNoColors();
+      return;
+    }
+    var url = cfg.components_colors_url;
+    if (!url) {
+      // not configured — just render nothing (but keep possible select or legacy input)
+      renderNoColors();
+      return;
+    }
+
+    // Build URL with component_id
+    if (url.indexOf('?') === -1) {
+      if (url.slice(-1) !== '/') url = url + '/';
+      url = url.replace('//', '/');
+      url = url + '?component_id=' + encodeURIComponent(componentId);
+    } else {
+      url = url + '&component_id=' + encodeURIComponent(componentId);
+    }
+
+    // show loading state
+    if (colorsContainer) colorsContainer.innerHTML = '<small>Loading colors…</small>';
+    if (colorSelect) clearSelect(colorSelect, "-- loading --");
+
+    ajaxGet(url, function (payload) {
+      if (!payload) { renderNoColors(); return; }
+      var arr = payload.results || payload.colors || payload.items || payload || [];
+      if (!Array.isArray(arr) || arr.length === 0) {
+        renderNoColors();
+        return;
+      }
+      populateColorWidgetsFromArray(arr);
+    });
+  }
+
+  // Debounce utility
+  var skuPreviewTimer = null;
+  function debounceSkuPreview(fn, wait) {
+    return function () {
+      var args = arguments;
+      if (skuPreviewTimer) clearTimeout(skuPreviewTimer);
+      skuPreviewTimer = setTimeout(function () { fn.apply(null, args); }, wait || 200);
+    };
+  }
+
+  // Build params for compute SKU endpoint; prefer sending color_id
+  function buildSkuParamsForColor(colorId) {
+    var params = new URLSearchParams();
+    if (categorySelect && categorySelect.value) params.append('category_id', categorySelect.value);
+    try {
+      if (categorySelect && categorySelect.selectedIndex >= 0) {
+        var catText = categorySelect.options[categorySelect.selectedIndex].text || '';
+        if (catText) params.append('category_label', catText.trim());
+      }
+    } catch (e) {}
+    var nameVal = ($('id_name') && $('id_name').value) || (document.querySelector('input[name="name"]') && document.querySelector('input[name="name"]').value) || '';
+    var collectionVal = ($('id_collection') && $('id_collection').value) || (document.querySelector('input[name="collection"]') && document.querySelector('input[name="collection"]').value) || '';
+    if (nameVal) params.append('name', nameVal);
+    if (collectionVal) params.append('collection', collectionVal);
+    var sizeLabel = '';
+    if (sizeSelect && sizeSelect.selectedIndex >= 0) {
+      sizeLabel = (sizeSelect.options[sizeSelect.selectedIndex].text || '').trim();
+      if (sizeLabel.indexOf(' —') > -1) sizeLabel = sizeLabel.split(' —')[0].trim();
+    }
+    if (sizeLabel) params.append('size', sizeLabel);
+    if (colorId) params.append('color_id', colorId);
+    return params;
+  }
+
+  // Fetch SKU preview for a color (returns Promise resolved with {colorId, colorName, sku})
+  function fetchSkuForColor(colorId, colorName) {
+    return new Promise(function (resolve) {
+      if (!cfg.ajax_compute_sku) { resolve({ colorId: colorId, colorName: colorName, sku: '' }); return; }
+      var params = buildSkuParamsForColor(colorId);
+      var url = cfg.ajax_compute_sku;
+      if (url.indexOf('?') === -1) {
+        if (url.slice(-1) !== '/') url = url + '/';
+        url = url.replace('//', '/');
+        url = url + '?' + params.toString();
+      } else {
+        url = url + '&' + params.toString();
+      }
+      ajaxGet(url, function (payload) {
+        var sku = (payload && typeof payload.sku === 'string') ? payload.sku : '';
+        resolve({ colorId: colorId, colorName: colorName, sku: sku });
+      });
+    });
+  }
+
+  // Update the SKU preview list based on currently checked colors
+  function updateSkuPreviews() {
+    if (!colorsContainer) {
+      // if single-select colorSelect exists and exactly one is selected, call compute SKU for that color
+      if (colorSelect && colorSelect.value) {
+        var selectedText = colorSelect.options[colorSelect.selectedIndex] ? colorSelect.options[colorSelect.selectedIndex].text : '';
+        fetchSkuForColor(colorSelect.value, selectedText).then(function (r) {
+          if (skuPreviewList) skuPreviewList.innerHTML = '<ul><li>' + (r.colorName || r.colorId) + ': ' + (r.sku || '(preview unavailable)') + '</li></ul>';
+          if (skuInput) skuInput.value = r.sku || '';
+        }).catch(function () {});
+      } else {
+        if (skuPreviewList) skuPreviewList.innerHTML = '<small class="text-muted">No colors selected</small>';
+      }
+      return;
+    }
+
+    var checked = Array.from(colorsContainer.querySelectorAll('input[name="colors[]"]:checked') || []);
+    if (!checked.length) {
+      if (skuPreviewList) skuPreviewList.innerHTML = '<small class="text-muted">No colors selected</small>';
+      if (legacyColorField && !colorSelect) legacyColorField.style.display = '';
+      if (skuInput) skuInput.value = '';
+      return;
+    }
+    if (legacyColorField) legacyColorField.style.display = 'none';
+    if (skuPreviewList) skuPreviewList.innerHTML = '<small>Generating previews…</small>';
+
+    var promises = checked.map(function (ch) {
+      return fetchSkuForColor(ch.value, ch.dataset.colorName || ch.value);
+    });
+
+    Promise.all(promises).then(function (results) {
+      if (!skuPreviewList) return;
+      var ul = document.createElement('ul');
+      results.forEach(function (r) {
+        var li = document.createElement('li');
+        li.textContent = (r.colorName || r.colorId) + ': ' + (r.sku || '(preview unavailable)');
+        ul.appendChild(li);
+      });
+      skuPreviewList.innerHTML = '';
+      skuPreviewList.appendChild(ul);
+
+      if (results.length === 1) {
+        if (skuInput) skuInput.value = results[0].sku || '';
+      } else {
+        if (skuInput) skuInput.value = '';
+      }
+    }).catch(function (e) {
+      warn("updateSkuPreviews failed", e);
+      if (skuPreviewList) skuPreviewList.innerHTML = '<small class="text-muted">Preview failed</small>';
+    });
+  }
+
+  var updateSkuPreviewsDebounced = debounceSkuPreview(updateSkuPreviews, 220);
+
+  function onColorCheckboxChange() {
+    updateSkuPreviewsDebounced();
+  }
+
+  // Recompute previews when dependent fields change (name, collection, size, category)
+  function wirePreviewDependencies() {
+    var nameEl = $('id_name');
+    var collectionEl = $('id_collection');
+    if (nameEl) { nameEl.addEventListener('input', updateSkuPreviewsDebounced); nameEl.addEventListener('change', updateSkuPreviewsDebounced); }
+    if (collectionEl) { collectionEl.addEventListener('input', updateSkuPreviewsDebounced); collectionEl.addEventListener('change', updateSkuPreviewsDebounced); }
+    if (sizeSelect) { sizeSelect.addEventListener('change', updateSkuPreviewsDebounced); }
+    if (categorySelect) { categorySelect.addEventListener('change', updateSkuPreviewsDebounced); }
+    if (colorSelect) { colorSelect.addEventListener('change', updateSkuPreviewsDebounced); }
+  }
+
   /* ---------- wire up events ---------- */
   if (catNewSelect) {
     populateCatNewSelectFromMaster();
@@ -609,6 +915,7 @@
   if (componentSelect) {
     componentSelect.addEventListener("change", onComponentChange);
     log("wired componentSelect");
+    try { if (componentSelect.value) setTimeout(function(){ fetchColorsForComponent(componentSelect.value); }, 120); } catch(e) {}
   } else {
     warn("componentSelect not found (Quality dropdown)");
   }
@@ -643,6 +950,9 @@
     warn("+ button for accessory quantity not found");
   }
 
+  // Wire preview dependency fields
+  wirePreviewDependencies();
+
   /* ---------- utility to trigger page computeAll (defined inline in template) ---------- */
   function triggerComputeIfPresent() {
     try { if (typeof computeAll === "function") { computeAll(); return; } } catch (e) {}
@@ -650,26 +960,32 @@
   }
 
   function init() {
-    // if template prefilled a category_new value (e.g. server-side copy_from) attempt to trigger change
     try {
       if (catNewSelect && catNewSelect.value) { setTimeout(function(){ catNewSelect.dispatchEvent(new Event("change")); }, 30); }
     } catch (e) {}
-    // if template prefilled a size value attempt to trigger
     try {
       if (sizeSelect && sizeSelect.value) { setTimeout(function(){ sizeSelect.dispatchEvent(new Event("change")); }, 60); }
     } catch (e) {}
-    // pretrigger component/category/accessory change if values present
     try { if (componentSelect && componentSelect.value) setTimeout(function(){ componentSelect.dispatchEvent(new Event("change")); }, 150); } catch (e) {}
     try { if (categorySelect && categorySelect.value) setTimeout(function(){ categorySelect.dispatchEvent(new Event("change")); }, 120); } catch (e) {}
     try { if (accessorySelect && accessorySelect.value) setTimeout(function(){ accessorySelect.dispatchEvent(new Event("change")); }, 200); } catch (e) {}
 
-    // optional: wire simple fields to re-run compute when changed (color, handwork are mostly metadata)
+    // If colorsContainer already contains server-rendered checkboxes (e.g., on form re-render), ensure listeners are attached
     try {
-      if (colorEl) { colorEl.addEventListener("change", triggerComputeIfPresent); colorEl.addEventListener("input", triggerComputeIfPresent); }
-      if (handworkEl) { handworkEl.addEventListener("change", triggerComputeIfPresent); handworkEl.addEventListener("input", triggerComputeIfPresent); }
-    } catch (e) {}
+      if (colorsContainer) {
+        Array.from(colorsContainer.querySelectorAll('input[name="colors[]"]')).forEach(function (ch) {
+          if (!ch.__costing_wired) {
+            ch.addEventListener('change', onColorCheckboxChange);
+            ch.__costing_wired = true;
+          }
+        });
+      }
+    } catch (e) { /* ignore */ }
 
-    log("costing.js (updated) initialized - category master new + sizes support active (master present? " + !!master + ")");
+    // Populate preview if there are prechecked values
+    try { setTimeout(function(){ updateSkuPreviewsDebounced(); }, 250); } catch (e) {}
+
+    log("costing.js initialized - component (quality) now fetches and populates colors (master present? " + !!master + ")");
   }
   init();
 
@@ -678,5 +994,6 @@
   window.CostingSheet.debug = function () { log("master:", master, "cfg:", cfg); };
   window.CostingSheet.populateSizeSelectForCategory = populateSizeSelectForCategory;
   window.CostingSheet.setSFPTotalsFromSizeObj = setSFPTotalsFromSizeObj;
-
+  window.CostingSheet.fetchColorsForComponent = fetchColorsForComponent;
+  window.CostingSheet.populateColorWidgetsFromArray = populateColorWidgetsFromArray;
 })();

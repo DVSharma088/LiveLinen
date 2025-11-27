@@ -3,27 +3,85 @@
 {% block content %}
 <h1>Work Orders</h1>
 
+{# Tabs to switch between sources (Shopify / Faire / Custom / All) #}
+<nav class="mb-3">
+  <div class="nav nav-tabs">
+    <a class="nav-item nav-link {% if '/e-com-orders/shopify' in request.path %}active{% endif %}" href="{% url 'workorders:shopify_list' %}">Shopify</a>
+    <a class="nav-item nav-link {% if '/e-com-orders/faire' in request.path %}active{% endif %}" href="{% url 'workorders:faire_list' %}">Faire</a>
+    <a class="nav-item nav-link {% if '/e-com-orders/custom' in request.path %}active{% endif %}" href="{% url 'workorders:custom_order_list' %}">Custom</a>
+    <a class="nav-item nav-link {% if request.path == '/workorders/' or request.path == '/workorders' %}active{% endif %}" href="{% url 'workorders:list' %}">All</a>
+    <a class="nav-item nav-link ms-auto" href="{% url 'workorders:ecom_index' %}">E-Com Index</a>
+  </div>
+</nav>
+
+{# DEBUG: show current user info so you can see why delete button might be hidden #}
+<div class="mb-3">
+  <strong>Debug (current user):</strong><br/>
+  Username: {{ user.get_username }}<br/>
+  is_staff: {{ user.is_staff }} — is_superuser: {{ user.is_superuser }}<br/>
+  has delete_workorder perm: {% if perms.workorders.delete_workorder %}YES{% else %}NO{% endif %}
+</div>
+
 <form id="create-random-form" method="post" action="{% url 'workorders:create_random' %}">
   {% csrf_token %}
   <button class="btn btn-primary" type="submit">Simulate Shopify → Create Random Work Order</button>
 </form>
 
-<table class="table">
-  <thead><tr><th>#</th><th>Order ID</th><th>Variant</th><th>Qty</th><th>Status</th><th></th></tr></thead>
+<table class="table mt-3">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Source</th>
+      <th>Order ID</th>
+      <th>Variant</th>
+      <th>Qty</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
   <tbody>
     {% for wo in workorders %}
       <tr>
         <td>{{ wo.pk }}</td>
+        <td>{{ wo.source|default:"Web" }}</td>
         <td>{{ wo.order_id }}</td>
         <td>{{ wo.variant_ordered }}</td>
         <td>{{ wo.quantity_ordered }}</td>
         <td>{{ wo.get_status_display }}</td>
-        <td><a href="{% url 'workorders:detail' pk=wo.pk %}">Open</a></td>
+        <td>
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'workorders:detail' pk=wo.pk %}">Open</a>
+
+          {# Inline delete form (staff/superuser or with explicit permission) #}
+          {% if user.is_superuser or user.is_staff or perms.workorders.delete_workorder %}
+            <form method="post" action="{% url 'workorders:delete' pk=wo.pk %}" style="display:inline;margin-left:.4rem;">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Delete this work order?');">Delete</button>
+            </form>
+          {% endif %}
+        </td>
       </tr>
     {% empty %}
-      <tr><td colspan="6">No work orders</td></tr>
+      <tr><td colspan="7">No work orders</td></tr>
     {% endfor %}
   </tbody>
 </table>
+
+{% if page_obj.has_other_pages %}
+  <nav aria-label="WorkOrders pagination">
+    <ul class="pagination">
+      {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Previous</span></li>
+      {% endif %}
+      <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Next</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+{% endif %}
 
 {% endblock %}

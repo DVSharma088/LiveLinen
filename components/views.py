@@ -16,7 +16,7 @@ from django.db.models.deletion import ProtectedError
 from django.contrib import messages
 from django.shortcuts import redirect, render
 
-from .models import CostComponent, ComponentMaster
+from .models import CostComponent, ComponentMaster, Color
 from .forms import CostComponentForm, ComponentMasterForm
 
 logger = logging.getLogger(__name__)
@@ -373,7 +373,7 @@ def inventory_items_json(request):
     if not model_class:
         return JsonResponse({"results": []})
 
-    qs = model_class.objects.all()
+    qs = model_class.objects_all() if hasattr(model_class, "objects_all") else model_class.objects.all()
     if search_q:
         filters = Q()
         # prefer common text fields
@@ -915,3 +915,92 @@ def inventory_item_json(request):
             "price_per_sqfoot": str(price_per_sqfoot),
             "type": i_type,
         })
+
+
+# ---------------------------------------------------------------
+# COLOR MANAGEMENT ENDPOINTS (NEW)
+# ---------------------------------------------------------------
+@login_required
+def colors_list_json(request):
+    """
+    Return all active colors for a ComponentMaster.
+    Params:
+        component_id = ComponentMaster.pk
+    Response:
+        { "results": [ {"id":1, "name":"Red"}, ... ] }
+    """
+    comp_id = request.GET.get("component_id")
+    if not comp_id:
+        return JsonResponse({"results": []})
+
+    try:
+        comp = ComponentMaster.objects.get(pk=comp_id)
+    except ComponentMaster.DoesNotExist:
+        return JsonResponse({"results": []})
+
+    colors = comp.colors.filter(is_active=True).order_by("name")
+    data = [{"id": c.id, "name": c.name} for c in colors]
+    return JsonResponse({"results": data})
+
+
+@login_required
+def color_create_json(request):
+    """
+    Create a new Color for a ComponentMaster.
+    POST params:
+        component_id
+        name
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    comp_id = request.POST.get("component_id")
+    name = (request.POST.get("name") or "").strip()
+
+    if not comp_id or not name:
+        return JsonResponse({"error": "Missing component_id or name"}, status=400)
+
+    try:
+        comp = ComponentMaster.objects.get(pk=comp_id)
+    except ComponentMaster.DoesNotExist:
+        return JsonResponse({"error": "ComponentMaster not found"}, status=404)
+
+    # Avoid duplicates (case-insensitive)
+    if comp.colors.filter(name__iexact=name).exists():
+        return JsonResponse({"error": "Color already exists"}, status=409)
+
+    try:
+        color = Color.objects.create(component_master=comp, name=name)
+        return JsonResponse({
+            "success": True,
+            "color": {"id": color.id, "name": color.name}
+        })
+    except Exception as e:
+        logger.exception("color_create_json failed: %s", e)
+        return JsonResponse({"error": "Failed to create color"}, status=500)
+
+
+@login_required
+def color_delete_json(request):
+    """
+    Soft-delete a Color.
+    POST params:
+        color_id
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    color_id = request.POST.get("color_id")
+    if not color_id:
+        return JsonResponse({"error": "Missing color_id"}, status=400)
+
+    try:
+        color = Color.objects.get(pk=color_id)
+        color.is_active = False
+        color.save()
+        return JsonResponse({"success": True})
+    except Color.DoesNotExist:
+        return JsonResponse({"error": "Color not found"}, status=404)
+    except Exception as e:
+        logger.exception("color_delete_json failed: %s", e)
+        return JsonResponse({"error": "Failed to delete color"}, status=500)

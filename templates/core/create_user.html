@@ -2,114 +2,159 @@
 {% load static %}
 
 {% block title %}Create User | Live Linen{% endblock %}
-
 {% block page_title %}Create New User{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <div class="card shadow-lg border-0 rounded-3">
-        <div class="card-header bg-primary text-white text-center">
-            <h4 class="mb-0">Create New User</h4>
-        </div>
-        <div class="card-body">
-            <form method="POST" novalidate>
-                {% csrf_token %}
-
-                <!-- Display any non-field errors -->
-                {% if form.non_field_errors %}
-                    <div class="alert alert-danger">
-                        {{ form.non_field_errors }}
-                    </div>
-                {% endif %}
-
-                <div class="row g-3">
-                    <!-- Username -->
-                    <div class="col-md-6">
-                        <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
-                        {{ form.username }}
-                        {% if form.username.errors %}
-                            <div class="text-danger small">{{ form.username.errors|striptags }}</div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Full Name -->
-                    <div class="col-md-6">
-                        <label for="{{ form.first_name.id_for_label }}" class="form-label">Full Name</label>
-                        {{ form.first_name }}
-                        {% if form.first_name.errors %}
-                            <div class="text-danger small">{{ form.first_name.errors|striptags }}</div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Email -->
-                    <div class="col-md-6">
-                        <label for="{{ form.email.id_for_label }}" class="form-label">Email</label>
-                        {{ form.email }}
-                        {% if form.email.errors %}
-                            <div class="text-danger small">{{ form.email.errors|striptags }}</div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Designation -->
-                    <div class="col-md-6">
-                        <label for="{{ form.designation.id_for_label }}" class="form-label">Designation</label>
-                        {{ form.designation }}
-                        {% if form.designation.help_text %}
-                            <div class="form-text text-muted">{{ form.designation.help_text }}</div>
-                        {% endif %}
-                        {% if form.designation.errors %}
-                            <div class="text-danger small">{{ form.designation.errors|striptags }}</div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Password -->
-                    <div class="col-md-6">
-                        <label for="{{ form.password1.id_for_label }}" class="form-label">Password</label>
-                        {{ form.password1 }}
-                        {% if form.password1.help_text %}
-                            <div class="form-text text-muted">{{ form.password1.help_text }}</div>
-                        {% endif %}
-                        {% if form.password1.errors %}
-                            <div class="text-danger small">{{ form.password1.errors|striptags }}</div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Confirm Password -->
-                    <div class="col-md-6">
-                        <label for="{{ form.password2.id_for_label }}" class="form-label">Confirm Password</label>
-                        {{ form.password2 }}
-                        {% if form.password2.errors %}
-                            <div class="text-danger small">{{ form.password2.errors|striptags }}</div>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <div class="mt-4 text-center">
-                    <button type="submit" class="btn btn-success px-4">
-                        <i class="bi bi-person-plus"></i> Create User
-                    </button>
-                    <a href="{% url 'core:user_list' %}" class="btn btn-secondary ms-2">
-                        <i class="bi bi-arrow-left"></i> Back to User List
-                    </a>
-                </div>
-            </form>
-        </div>
+  <div class="card shadow-sm border-0 rounded-3" style="max-width:900px; margin:auto;">
+    
+    <!-- HEADER (White heading text) -->
+    <div class="card-header text-center" 
+         style="
+           background:linear-gradient(90deg, rgba(11,39,64,0.96), rgba(14,51,89,0.9));
+           color:#fff;
+           border-radius: .5rem .5rem 0 0;
+         ">
+      <h4 class="mb-0" style="font-weight:700; color:#fff;">Create New User</h4>
     </div>
+
+    <div class="card-body" style="background:var(--bg);">
+      <form method="POST" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+          </div>
+        {% endif %}
+
+        <div class="row g-3">
+          
+          <!-- Username -->
+          <div class="col-md-6">
+            <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
+            {{ form.username }}
+            {% if form.username.errors %}
+              <div class="text-danger small mt-1">{{ form.username.errors|striptags }}</div>
+            {% endif %}
+          </div>
+
+          <!-- Full Name -->
+          <div class="col-md-6">
+            <label for="{{ form.first_name.id_for_label }}" class="form-label">Full Name</label>
+            {{ form.first_name }}
+            {% if form.first_name.errors %}
+              <div class="text-danger small mt-1">{{ form.first_name.errors|striptags }}</div>
+            {% endif %}
+          </div>
+
+          <!-- Email -->
+          <div class="col-md-6">
+            <label for="{{ form.email.id_for_label }}" class="form-label">Email</label>
+            {{ form.email }}
+            {% if form.email.errors %}
+              <div class="text-danger small mt-1">{{ form.email.errors|striptags }}</div>
+            {% endif %}
+          </div>
+
+          <!-- Designation -->
+          <div class="col-md-6">
+            <label for="{{ form.designation.id_for_label }}" class="form-label">Designation</label>
+            {{ form.designation }}
+            {% if form.designation.help_text %}
+              <div class="form-text small text-muted">{{ form.designation.help_text }}</div>
+            {% endif %}
+            {% if form.designation.errors %}
+              <div class="text-danger small mt-1">{{ form.designation.errors|striptags }}</div>
+            {% endif %}
+          </div>
+
+          <!-- Password -->
+          <div class="col-md-6">
+            <label for="{{ form.password1.id_for_label }}" class="form-label">Password</label>
+            {{ form.password1 }}
+            {% if form.password1.help_text %}
+              <div class="form-text small text-muted">{{ form.password1.help_text }}</div>
+            {% endif %}
+            {% if form.password1.errors %}
+              <div class="text-danger small mt-1">{{ form.password1.errors|striptags }}</div>
+            {% endif %}
+          </div>
+
+          <!-- Confirm Password -->
+          <div class="col-md-6">
+            <label for="{{ form.password2.id_for_label }}" class="form-label">Confirm Password</label>
+            {{ form.password2 }}
+            {% if form.password2.errors %}
+              <div class="text-danger small mt-1">{{ form.password2.errors|striptags }}</div>
+            {% endif %}
+          </div>
+
+        </div>
+
+        <div class="mt-4 text-center">
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-person-plus"></i> Create User
+          </button>
+          <a href="{% url 'core:user_list' %}" class="btn btn-outline-secondary ms-2">
+            <i class="bi bi-arrow-left"></i> Back to User List
+          </a>
+        </div>
+
+      </form>
+    </div>
+  </div>
 </div>
 
 <style>
-    .form-label {
-        font-weight: 600;
-    }
-    input, select, textarea {
-        width: 100%;
-        border: 1px solid #ced4da;
-        border-radius: 6px;
-        padding: 8px;
-    }
-    .card {
-        max-width: 900px;
-        margin: auto;
-    }
+  :root {
+    --primary: #0b2740;
+    --accent:  #1e90ff;
+    --bg:      #ffffff;
+    --muted:   #f1f5f9;
+    --text-dark: #212529;
+  }
+
+  .form-label { 
+    font-weight: 600; 
+    color: var(--text-dark); 
+  }
+
+  input[type="text"], 
+  input[type="email"], 
+  input[type="password"], 
+  select, 
+  textarea {
+    width: 100%;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: .55rem .65rem;
+    background: #fff;
+    transition: box-shadow .12s ease, border-color .12s ease;
+  }
+
+  input:focus, 
+  select:focus, 
+  textarea:focus {
+    outline: none;
+    border-color: rgba(30,144,255,0.6);
+    box-shadow: 0 6px 14px rgba(30,144,255,0.08);
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .btn-primary:hover {
+    background: #186fd0;
+    border-color: #186fd0;
+  }
+
+  .btn-outline-secondary {
+    border-color: rgba(33,37,41,0.18);
+    color: #333;
+  }
 </style>
 {% endblock %}

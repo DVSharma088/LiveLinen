@@ -1,298 +1,338 @@
 ﻿(function () {
   "use strict";
 
-  // CSRF helpers
-  function getCookie(name) {
-    if (!document.cookie) return null;
-    const cookies = document.cookie.split(";").map(c => c.trim());
-    for (let cookie of cookies) {
-      if (cookie.startsWith(name + "=")) {
-        return decodeURIComponent(cookie.split("=")[1]);
-      }
-    }
-    return null;
-  }
-  const csrftoken = getCookie("csrftoken");
-
-  function setLoading(btn, isLoading) {
-    if (!btn) return;
-    if (isLoading) {
-      btn.dataset.orig = btn.innerHTML;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Please wait';
-      btn.disabled = true;
-    } else {
-      if (btn.dataset.orig) btn.innerHTML = btn.dataset.orig;
-      btn.disabled = false;
-    }
-  }
-
-  // Login/Logout button
-  document.addEventListener("click", function (ev) {
-    const btn = ev.target.closest && ev.target.closest("#login-time-btn");
-    if (!btn) return;
-    ev.preventDefault();
-
-    const form = document.querySelector("#login-time-form");
-    const feedback = document.querySelector("#login-time-feedback");
-
-    setLoading(btn, true);
-    if (feedback) feedback.textContent = "Saving...";
-
-    // always post to /dashboard/login-time/
-    const action = form ? form.getAttribute("action") : "/dashboard/login-time/";
-
-    const headers = {
-      "X-CSRFToken": csrftoken,
-      Accept: "application/json",
-    };
-
-    fetch(action, {
-      method: "POST",
-      credentials: "same-origin",
-      headers,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error("Server error: " + (txt || res.statusText));
-        }
-        return res.json().catch(() => {
-          throw new Error("Invalid JSON response");
-        });
-      })
-      .then((data) => {
-        if (data && data.ok && data.attendance) {
-          const att = data.attendance;
-          // update UI: change button label and show times
-          if (att.logout_time && att.login_time) {
-            btn.innerText = "Login";
-            if (feedback) feedback.innerText = `Logged out at ${new Date(att.logout_time).toLocaleString()}`;
-          } else if (att.login_time && !att.logout_time) {
-            btn.innerText = "Logout";
-            if (feedback) feedback.innerText = `Logged in at ${new Date(att.login_time).toLocaleString()}`;
-          } else {
-            if (feedback) feedback.innerText = "Attendance recorded";
-          }
-          // reload to update other widgets
-          setTimeout(() => window.location.reload(), 900);
-        } else {
-          throw new Error((data && data.error) || "Unexpected server response");
-        }
-      })
-      .catch((err) => {
-        console.error("Attendance error", err);
-        if (feedback) feedback.innerText = err.message || "Could not record attendance";
-      })
-      .finally(() => setLoading(btn, false));
-  });
-
-  // Generic AJAX form submit handler for forms with class "ajax-form"
-  document.addEventListener("submit", function (ev) {
-    const form = ev.target;
-    if (!form.classList || !form.classList.contains("ajax-form")) return; // ignore non-ajax forms
-    ev.preventDefault();
-
-    const submitBtn = form.querySelector('button[type="submit"]') || form.querySelector('input[type="submit"]');
-    setLoading(submitBtn, true);
-
-    const url = form.getAttribute("action") || window.location.href;
-    const method = (form.getAttribute("method") || "POST").toUpperCase();
-
-    const fd = new FormData(form);
-
-    const headers = {
-      "X-CSRFToken": csrftoken,
-      Accept: "text/html, application/json",
-    };
-
-    fetch(url, {
-      method,
-      credentials: "same-origin",
-      headers,
-      body: fd,
-    })
-      .then(async (res) => {
-        if (res.redirected) {
-          window.location.href = res.url;
-          return;
-        }
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(text || res.statusText);
-        }
-        window.location.reload();
-      })
-      .catch((err) => {
-        console.error("Form submit error", err);
-        let errBox = form.querySelector(".form-submit-error");
-        if (!errBox) {
-          errBox = document.createElement("div");
-          errBox.className = "form-submit-error alert alert-danger mt-3";
-          form.prepend(errBox);
-        }
-        errBox.innerText = err.message || "Could not submit form";
-      })
-      .finally(() => setLoading(submitBtn, false));
-  });
-
-  // ------------------------------
-  // Chart rendering (Chart.js)
-  // ------------------------------
-  function safeGet(obj, path, fallback) {
+  // -------------------------
+  // Helpers
+  // -------------------------
+  function ensureCanvasHeight(canvasEl, px) {
+    if (!canvasEl) return;
     try {
-      return path.split(".").reduce((o, p) => (o && o[p] !== undefined ? o[p] : undefined), obj) ?? fallback;
+      canvasEl.style.height = px + "px";
+      canvasEl.style.maxHeight = px + "px";
+      canvasEl.style.width = "100%";
+      canvasEl.height = px; // actual drawing buffer
     } catch (e) {
-      return fallback;
+      console.warn("ensureCanvasHeight failed", e);
     }
   }
 
-  function renderDashboardCharts() {
-    // Ensure Chart.js is loaded
-    if (typeof Chart === "undefined") {
-      // Chart may be loaded via template CDN; if missing just skip gracefully.
-      // Developer note: ensure template includes Chart.js before this script.
-      console.warn("Chart.js not found — skip rendering dashboard charts.");
-      return;
+  function padArrayToLength(arr, len) {
+    const a = Array.isArray(arr) ? arr.slice(0) : [];
+    while (a.length < len) a.push(0);
+    if (a.length > len) return a.slice(a.length - len);
+    return a;
+  }
+
+  function makeDataset(label, dataArr, opts = {}) {
+    return {
+      label: label,
+      data: (dataArr || []).map((v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      }),
+      tension: opts.tension !== undefined ? opts.tension : 0.25,
+      fill: opts.fill !== undefined ? opts.fill : false,
+      pointRadius: opts.pointRadius !== undefined ? opts.pointRadius : 3,
+      hidden: !!opts.hidden,
+      borderDash: opts.borderDash || undefined,
+    };
+  }
+
+  function createPie(canvasId, payload) {
+    const el = document.getElementById(canvasId);
+    if (!el) {
+      console.warn("Missing canvas:", canvasId);
+      return null;
+    }
+    ensureCanvasHeight(el, 260);
+    const ctx = el.getContext && el.getContext("2d");
+    if (!ctx) {
+      console.error("No 2D context for", canvasId);
+      return null;
+    }
+    try {
+      return new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: payload.labels || [],
+          datasets: [{ data: (payload.values || []).map((v) => Number(v) || 0) }],
+        },
+        options: { responsive: true, maintainAspectRatio: false },
+      });
+    } catch (e) {
+      console.error("createPie error", e);
+      return null;
+    }
+  }
+
+  function createLine(canvasId, labels, dataArr, opts) {
+    const el = document.getElementById(canvasId);
+    if (!el) {
+      console.warn("Missing canvas:", canvasId);
+      return null;
+    }
+    ensureCanvasHeight(el, 260);
+    const ctx = el.getContext && el.getContext("2d");
+    if (!ctx) {
+      console.error("No 2D context for", canvasId);
+      return null;
+    }
+    try {
+      return new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels || [],
+          datasets: [
+            {
+              label: opts.label || "",
+              data: (dataArr || []).map((v) => Number(v) || 0),
+              tension: opts.tension || 0.25,
+              fill: false,
+              pointRadius: opts.pointRadius || 3,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true } },
+        },
+      });
+    } catch (e) {
+      console.error("createLine error", e);
+      return null;
+    }
+  }
+
+  // -------------------------
+  // Stock chart builder (no Totals line)
+  // -------------------------
+  function createStockUsedChart(payload) {
+    const el = document.getElementById("stockUsedChart");
+    if (!el) {
+      console.warn("Missing canvas: stockUsedChart");
+      return null;
+    }
+    ensureCanvasHeight(el, 260);
+    const ctx = el.getContext && el.getContext("2d");
+    if (!ctx) {
+      console.error("No 2D context for stockUsedChart");
+      return null;
     }
 
-    // Read chart state injected by template into window.__LIVE_LINEN_CHARTS
-    const chartsState = window.__LIVE_LINEN_CHARTS || {};
-    const inventoryPie = chartsState.inventoryPie || null;
-    const ordersLine = chartsState.ordersLine || null;
+    const labels = payload.labels || [];
+    const len = labels.length || 0;
 
-    // Keep created chart instances so we can destroy/recreate if needed
-    window.__LIVE_LINEN_CHARTS._instances = window.__LIVE_LINEN_CHARTS._instances || {};
+    // new series (ensure padded to same length)
+    const fabricSeries = padArrayToLength(payload.fabric_added || [], len);
+    const accessoriesSeries = padArrayToLength(payload.accessories_used || [], len);
+    const printedSeries = padArrayToLength(payload.printed_added || [], len);
 
-    // ---------- PIE CHART (Inventory) ----------
+    // build datasets in deterministic order:
+    // 0: Fabric added
+    // 1: Accessories used
+    // 2: Printed added
+    // 3..: Orders (hidden)
+    const datasets = [];
+    datasets.push(makeDataset("Fabric added", fabricSeries, { tension: 0.2, pointRadius: 3, hidden: false }));
+    datasets.push(makeDataset("Accessories used", accessoriesSeries, { tension: 0.2, pointRadius: 3, hidden: false, borderDash: [6, 4] }));
+    datasets.push(makeDataset("Printed added", printedSeries, { tension: 0.2, pointRadius: 3, hidden: false }));
+
+    // append per-order datasets (kept hidden by default)
+    const ordersObj = payload.orders || {};
+    const orderKeys = Object.keys(ordersObj || {});
+    orderKeys.forEach((orderNo) => {
+      const arr = padArrayToLength(ordersObj[orderNo] || [], len);
+      datasets.push(
+        makeDataset("Order #" + orderNo, arr, { hidden: true, tension: 0.2, pointRadius: 3, borderDash: [6, 4] })
+      );
+    });
+
     try {
-      const pieEl = document.getElementById("inventoryPieChart");
-      if (pieEl && inventoryPie && Array.isArray(inventoryPie.labels) && Array.isArray(inventoryPie.values)) {
-        // if an instance exists, destroy to avoid duplication
-        if (window.__LIVE_LINEN_CHARTS._instances.inventoryPie instanceof Chart) {
-          try { window.__LIVE_LINEN_CHARTS._instances.inventoryPie.destroy(); } catch (e) { /* ignore */ }
-        }
-
-        const pieConfig = {
-          type: "pie",
-          data: {
-            labels: inventoryPie.labels,
-            datasets: [{
-              label: "Items added (last 7 days)",
-              data: inventoryPie.values.map(v => Number(v) || 0),
-            }]
+      return new Chart(ctx, {
+        type: "line",
+        data: { labels: labels, datasets: datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "nearest", axis: "x", intersect: false },
+          plugins: {
+            legend: { position: "top" },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  const val = context.raw;
+                  return (context.dataset.label || "") + ": " + (val === null ? "0" : val);
+                },
+              },
+            },
           },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { position: "bottom" },
-              tooltip: { enabled: true }
-            }
-          }
-        };
+          scales: {
+            x: { title: { display: true, text: "Date" }, ticks: { autoSkip: false } },
+            y: { title: { display: true, text: "Quantity" }, beginAtZero: true },
+          },
+        },
+      });
+    } catch (e) {
+      console.error("createStockUsedChart error", e);
+      return null;
+    }
+  }
 
-        // Set the canvas parent to a fixed height so Chart.js can size correctly
-        pieEl.style.maxHeight = "320px";
-        pieEl.style.width = "100%";
-        window.__LIVE_LINEN_CHARTS._instances.inventoryPie = new Chart(pieEl.getContext("2d"), pieConfig);
-      } else {
-        // no data or no element — skip quietly
+  // -------------------------
+  // Initialization (wait for Chart & DOM)
+  // -------------------------
+  function initWhenReady(fn) {
+    function readyCheck() {
+      if (typeof Chart !== "undefined" && document.readyState !== "loading") {
+        try {
+          fn();
+        } catch (err) {
+          console.error("initWhenReady fn error", err);
+        }
+        return true;
       }
-    } catch (err) {
-      console.error("Error rendering inventory pie chart:", err);
+      return false;
+    }
+    if (!readyCheck()) {
+      let attempts = 0;
+      const max = 40;
+      const interval = setInterval(() => {
+        attempts++;
+        if (readyCheck() || attempts >= max) clearInterval(interval);
+      }, 200);
+    }
+  }
+
+  initWhenReady(function () {
+    const state = window.__LIVE_LINEN_CHARTS || {};
+
+    // destroy previous instances if any (defensive)
+    if (window.__dashboard_instances) {
+      Object.values(window.__dashboard_instances).forEach((inst) => {
+        try {
+          inst.destroy();
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+    window.__dashboard_instances = window.__dashboard_instances || {};
+
+    // inventory pie
+    try {
+      window.__dashboard_instances.inventoryPie = createPie(
+        "inventoryPieChart",
+        state.inventoryPie || { labels: [], values: [] }
+      );
+    } catch (e) {
+      console.error(e);
     }
 
-    // ---------- LINE CHART (Orders per week) ----------
+    // orders line
     try {
-      const lineEl = document.getElementById("ordersLineChart");
-      if (lineEl && ordersLine && Array.isArray(ordersLine.labels) && Array.isArray(ordersLine.values)) {
-        if (window.__LIVE_LINEN_CHARTS._instances.ordersLine instanceof Chart) {
-          try { window.__LIVE_LINEN_CHARTS._instances.ordersLine.destroy(); } catch (e) { /* ignore */ }
-        }
+      const ord = state.ordersLine || { labels: [], values: [] };
+      window.__dashboard_instances.ordersLine = createLine(
+        "ordersLineChart",
+        ord.labels || [],
+        ord.values || [],
+        { label: "Issues per week" }
+      );
+    } catch (e) {
+      console.error(e);
+    }
 
-        // Try to coerce labels to readable strings and values to numbers
-        const labels = ordersLine.labels.map(l => (l === null || l === undefined) ? "" : String(l));
-        const values = ordersLine.values.map(v => {
-          const n = Number(v);
-          return Number.isFinite(n) ? n : 0;
+    // stock used (without Totals)
+    try {
+      window.__dashboard_instances.stockUsed = createStockUsedChart(state.stockUsed || { labels: [], totals: [], orders: {} });
+    } catch (e) {
+      console.error(e);
+    }
+
+    // ---------- wire orderSelect behavior ----------
+    try {
+      const sel = document.getElementById("orderSelect");
+      const chart = window.__dashboard_instances.stockUsed;
+      if (sel && chart) {
+        // populate select
+        sel.innerHTML = '<option value="__none__">— Show totals only —</option>';
+        const orders = state.stockUsed && state.stockUsed.orders ? Object.keys(state.stockUsed.orders) : [];
+        orders.forEach((orderNo) => {
+          const o = document.createElement("option");
+          o.value = orderNo;
+          o.textContent = orderNo;
+          sel.appendChild(o);
         });
 
-        const lineConfig = {
-          type: "line",
-          data: {
-            labels: labels,
-            datasets: [{
-              label: "Issues per week",
-              data: values,
-              fill: false,
-              tension: 0.25,
-              pointRadius: 4,
-              pointHoverRadius: 6,
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { position: "top" },
-              tooltip: { enabled: true }
-            },
-            scales: {
-              x: {
-                display: true,
-                title: { display: true, text: "Week starting" }
-              },
-              y: {
-                display: true,
-                title: { display: true, text: "Count" },
-                beginAtZero: true,
-                ticks: { precision: 0 }
+        sel.addEventListener("change", function () {
+          const val = sel.value;
+          if (!chart || !chart.data || !Array.isArray(chart.data.datasets)) return;
+
+          // datasets layout: [Fabric, Accessories, Printed, ... orders]
+          const baseOrderIndex = 3; // first order dataset index
+          // hide all order datasets
+          for (let i = baseOrderIndex; i < chart.data.datasets.length; i++) {
+            chart.data.datasets[i].hidden = true;
+          }
+          if (val && val !== "__none__") {
+            const targetLabel = "Order #" + val;
+            for (let i = baseOrderIndex; i < chart.data.datasets.length; i++) {
+              if (chart.data.datasets[i].label === targetLabel) {
+                chart.data.datasets[i].hidden = false;
+                break;
               }
             }
           }
-        };
-
-        lineEl.style.maxHeight = "320px";
-        lineEl.style.width = "100%";
-        window.__LIVE_LINEN_CHARTS._instances.ordersLine = new Chart(lineEl.getContext("2d"), lineConfig);
-      } else {
-        // no data or no element — skip quietly
+          try {
+            chart.update();
+          } catch (e) {
+            console.warn("chart.update() failed after orderSelect change:", e);
+          }
+        });
       }
-    } catch (err) {
-      console.error("Error rendering orders line chart:", err);
-    }
-  }
-
-  // Render charts on DOMContentLoaded (and also attempt again if Chart.js loads later)
-  function tryInitCharts() {
-    try {
-      renderDashboardCharts();
     } catch (e) {
-      console.error("Failed to initialize charts:", e);
+      console.error("orderSelect wiring error", e);
     }
-  }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", tryInitCharts);
-  } else {
-    tryInitCharts();
-  }
+    // ---------- wire checkboxes for the three series ----------
+    try {
+      const chart = window.__dashboard_instances.stockUsed;
+      if (chart && chart.data && Array.isArray(chart.data.datasets)) {
+        function toggleByLabel(lbl, checked) {
+          for (let i = 0; i < chart.data.datasets.length; i++) {
+            if (chart.data.datasets[i].label === lbl) {
+              chart.data.datasets[i].hidden = !checked;
+            }
+          }
+          try {
+            chart.update();
+          } catch (e) {
+            console.warn("chart.update failed on toggle", e);
+          }
+        }
 
-  // Also observe if Chart.js is added dynamically later (rare) — then re-run rendering
-  // This is conservative: if Chart becomes available after initial load, we still render.
-  (function watchForChartJs() {
-    if (typeof Chart !== "undefined") return;
-    let attempts = 0;
-    const maxAttempts = 10;
-    const interval = setInterval(function () {
-      attempts += 1;
-      if (typeof Chart !== "undefined") {
-        tryInitCharts();
-        clearInterval(interval);
-      } else if (attempts >= maxAttempts) {
-        clearInterval(interval);
+        const cbFabric = document.getElementById("toggleFabric");
+        const cbAccessories = document.getElementById("toggleAccessories");
+        const cbPrinted = document.getElementById("togglePrinted");
+
+        if (cbFabric) {
+          cbFabric.addEventListener("change", function (ev) {
+            toggleByLabel("Fabric added", ev.target.checked);
+          });
+        }
+        if (cbAccessories) {
+          cbAccessories.addEventListener("change", function (ev) {
+            toggleByLabel("Accessories used", ev.target.checked);
+          });
+        }
+        if (cbPrinted) {
+          cbPrinted.addEventListener("change", function (ev) {
+            toggleByLabel("Printed added", ev.target.checked);
+          });
+        }
       }
-    }, 500);
-  })();
-
+    } catch (e) {
+      console.error("checkbox wiring error", e);
+    }
+  });
 })();

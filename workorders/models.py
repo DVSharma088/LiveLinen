@@ -1,4 +1,4 @@
-# workorders/models.py
+# /mnt/data/models.py
 from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
@@ -34,12 +34,33 @@ class WorkOrder(models.Model):
         (STATUS_CANCELLED, 'Cancelled'),
     ]
 
+    # core/order fields
     order_id = models.CharField(max_length=120, db_index=True)
     variant_ordered = models.CharField(max_length=200)  # could be FK to your product model later
     quantity_ordered = models.PositiveIntegerField(default=1)
+
+    # Shopify / external integration
+    source = models.CharField(
+        max_length=20,
+        choices=(('web', 'Web Orders'), ('shopify', 'Shopify'), ('faire', 'Faire'), ('custom', 'Custom')),
+        default='web',
+        db_index=True
+    )
+    shopify_order_id = models.CharField(max_length=64, blank=True, null=True, db_index=True)
+    raw = models.JSONField(blank=True, null=True)  # store raw payload for debugging / later mapping
+
+    # customer / pricing fields (optional but helpful)
+    customer_name = models.CharField(max_length=255, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    total_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=10, default='USD', blank=True)
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
     def __str__(self):
         return f"WO #{self.pk} ({self.order_id}) - {self.get_status_display()}"
@@ -115,6 +136,7 @@ class PackagingStage(models.Model):
 
     work_order = models.ForeignKey(WorkOrder, related_name='stages', on_delete=models.CASCADE)
     stage_name = models.CharField(max_length=150)
+
     # admin can set this to assign a stage to a specific employee
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -123,9 +145,15 @@ class PackagingStage(models.Model):
         on_delete=models.SET_NULL,
         related_name='assigned_stages'
     )
+
     stage_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     completion_date = models.DateTimeField(null=True, blank=True)
     image = models.ImageField(upload_to='packaging/stage_images/', null=True, blank=True)
+
+    # assignment / timing fields (new)
+    time_limit_hours = models.PositiveIntegerField(null=True, blank=True,
+                                                   help_text="Time limit in hours assigned for this stage")
+    due_by = models.DateTimeField(null=True, blank=True, help_text="Computed due datetime based on time_limit_hours")
 
     # handoff fields
     received_confirmed = models.BooleanField(default=False)
@@ -181,6 +209,35 @@ class PackagingStage(models.Model):
         self.save(update_fields=['stage_status'])
         self.work_order.check_and_update_status()
 
+    def assign(self, user=None, time_limit_hours=None, assigned_by=None):
+        """
+        Assign this stage to a user and optionally set a time limit (in hours).
+        This method computes due_by based on time_limit_hours and now().
+        """
+        changed = False
+        if user is not None and self.assigned_to_id != getattr(user, 'id', None):
+            self.assigned_to = user
+            changed = True
+        if time_limit_hours is not None:
+            try:
+                hours = int(time_limit_hours)
+                self.time_limit_hours = hours
+                self.due_by = timezone.now() + timezone.timedelta(hours=hours)
+                changed = True
+            except (TypeError, ValueError):
+                # ignore invalid input
+                pass
+        if changed:
+            self.save(update_fields=['assigned_to', 'time_limit_hours', 'due_by'])
+            # notify assigned user
+            if self.assigned_to:
+                message = (
+                    f"You have been assigned stage '{self.stage_name}' for WorkOrder "
+                    f"{self.work_order.order_id or self.work_order.pk}. "
+                    f"Time limit: {self.time_limit_hours or 'not set'} hours."
+                )
+                Notification.create(to_user=self.assigned_to, from_user=assigned_by, message=message, stage=self)
+
     def mark_completed(self, by_user=None, image_file=None):
         """
         Mark completed and optionally attach an image. This method will:
@@ -209,11 +266,12 @@ class PackagingStage(models.Model):
             # notify next stage's assigned user (if any)
             next_stage = self.get_next_stage()
             if next_stage and next_stage.assigned_to:
+                by_user_name = getattr(by_user, 'get_full_name', lambda: str(by_user))()
                 msg = (
                     f"Task received for stage '{next_stage.stage_name}' "
                     f"of WorkOrder {self.work_order.order_id or self.work_order.pk}. "
                     f"Previous stage '{self.stage_name}' completed by "
-                    f"{getattr(by_user, 'get_full_name', lambda: str(by_user))() if by_user else 'previous user'}."
+                    f"{by_user_name if by_user else 'previous user'}."
                 )
                 Notification.create(
                     to_user=next_stage.assigned_to,
@@ -246,9 +304,10 @@ class PackagingStage(models.Model):
             # notify previous stage assigned user (ack back)
             prev_stage = self.get_previous_stage()
             if prev_stage and prev_stage.assigned_to:
+                by_user_name = getattr(by_user, 'get_full_name', lambda: str(by_user))()
                 ack_msg = (
                     f"Task '{self.stage_name}' of WorkOrder {self.work_order.order_id or self.work_order.pk} "
-                    f"was received by {getattr(by_user, 'get_full_name', lambda: str(by_user))() if by_user else 'the user'}. "
+                    f"was received by {by_user_name if by_user else 'the user'}. "
                     "Task Sent Successfully."
                 )
                 Notification.create(

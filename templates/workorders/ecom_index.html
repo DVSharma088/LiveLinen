@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+
+<h2 class="mb-4">E-Commerce Orders</h2>
+
+<div class="row">
+
+  <!-- Shopify -->
+  <div class="col-md-4 mb-3">
+    <a href="{% url 'workorders:shopify_list' %}" class="text-decoration-none">
+      <div class="card shadow-sm p-4 text-center" style="cursor:pointer;">
+        <h4 class="mb-2">🛍️ Shopify Orders</h4>
+        <p class="text-muted">View & manage orders coming from Shopify</p>
+      </div>
+    </a>
+  </div>
+
+  <!-- Faire -->
+  <div class="col-md-4 mb-3">
+    <a href="{% url 'workorders:faire_list' %}" class="text-decoration-none">
+      <div class="card shadow-sm p-4 text-center" style="cursor:pointer;">
+        <h4 class="mb-2">🏷️ Faire Orders</h4>
+        <p class="text-muted">View & manage Faire marketplace orders</p>
+      </div>
+    </a>
+  </div>
+
+  <!-- Custom Orders -->
+  <div class="col-md-4 mb-3">
+    <a href="{% url 'workorders:custom_order_list' %}" class="text-decoration-none">
+      <div class="card shadow-sm p-4 text-center" style="cursor:pointer;">
+        <h4 class="mb-2">📝 Custom Orders</h4>
+        <p class="text-muted">Manually created orders for internal use</p>
+      </div>
+    </a>
+  </div>
+
+</div>
+
+{% endblock %}

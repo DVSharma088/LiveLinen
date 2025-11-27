@@ -12,6 +12,8 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from django.db import models as django_models
 from django.shortcuts import get_object_or_404, redirect
+from django.db import transaction
+from django.contrib import messages
 
 from .models import CostingSheet
 from .forms import get_costing_sheet_form
@@ -189,9 +191,13 @@ class CostingSheetCreateView(CreateView):
 
     def form_valid(self, form):
         """
-        Keep legacy behaviour: snapshot size label if size_master posted, and accept legacy category_new POST.
+        Modified to support multi-color creation:
+        - If the POST includes 'colors[]' (list of color ids or names), create one CostingSheet instance per color.
+        - If no colors[] provided, keep legacy single-create behaviour.
         """
         inst = form.instance
+
+        # Preserve legacy behavior: accept category_new, snapshot size label
         try:
             cd = self.request.POST
             if "category_new" in form.fields and not getattr(inst, "category_new_id", None):
@@ -227,8 +233,155 @@ class CostingSheetCreateView(CreateView):
         except Exception:
             pass
 
-        # Let the model compute SKU on save() if it's blank and inputs exist.
-        return super().form_valid(form)
+        # --- Multi-color creation ---
+        post = self.request.POST
+        color_ids = post.getlist("colors[]") or post.getlist("colors") or []
+        # Accept legacy single color fields
+        if not color_ids:
+            single_color = post.get("color") or post.get("color_id") or post.get("color_text") or post.get("color_name")
+            if single_color:
+                color_ids = [single_color]
+
+        if not color_ids:
+            # Single-create: operate as normal
+            return super().form_valid(form)
+
+        # Multi-create: try to resolve Color model; if not present, treat color values as raw strings
+        ColorModel = _get_model("components", "Color") or _get_model("component_master", "Color") or _get_model("components", "ComponentColor")
+        created_count = 0
+        try:
+            with transaction.atomic():
+                # Save first instance
+                inst = form.save(commit=False)
+                first_val = color_ids[0]
+
+                color_obj = None
+                if ColorModel:
+                    try:
+                        # try integer id
+                        try:
+                            color_obj = ColorModel.objects.filter(pk=int(first_val), is_active=True).first()
+                        except Exception:
+                            # fallback: try filter by name
+                            color_obj = ColorModel.objects.filter(name__iexact=str(first_val)).first()
+                    except Exception:
+                        color_obj = None
+
+                # attach color to instance by best available field
+                if color_obj is not None:
+                    if hasattr(inst, "color_id"):
+                        inst.color_id = getattr(color_obj, "id", None)
+                    elif hasattr(inst, "color") and hasattr(getattr(type(inst), "color", None), "field"):
+                        try:
+                            inst.color = color_obj
+                        except Exception:
+                            try:
+                                inst.color = getattr(color_obj, "name", str(color_obj))
+                            except Exception:
+                                pass
+                    else:
+                        if hasattr(inst, "color"):
+                            try:
+                                inst.color = getattr(color_obj, "name", str(color_obj))
+                            except Exception:
+                                inst.color = str(color_obj)
+                        elif hasattr(inst, "color_name"):
+                            try:
+                                inst.color_name = getattr(color_obj, "name", str(color_obj))
+                            except Exception:
+                                inst.color_name = str(color_obj)
+                        else:
+                            try:
+                                setattr(inst, "color", getattr(color_obj, "name", str(color_obj)))
+                            except Exception:
+                                pass
+                else:
+                    raw_color_val = str(first_val)
+                    if hasattr(inst, "color"):
+                        inst.color = raw_color_val
+                    elif hasattr(inst, "color_name"):
+                        inst.color_name = raw_color_val
+                    else:
+                        try:
+                            setattr(inst, "color", raw_color_val)
+                        except Exception:
+                            pass
+
+                inst.save()
+                created_count += 1
+
+                # clones for remaining colors
+                if len(color_ids) > 1:
+                    base_obj = inst
+                    for val in color_ids[1:]:
+                        # clone via fresh instance from saved base to preserve defaults
+                        clone = None
+                        try:
+                            clone = CostingSheet.objects.get(pk=base_obj.pk)
+                        except Exception:
+                            clone = None
+
+                        if clone is None:
+                            clone = form.save(commit=False)
+                        else:
+                            clone.pk = None
+                            try:
+                                setattr(clone, "id", None)
+                            except Exception:
+                                pass
+
+                        color_obj = None
+                        if ColorModel:
+                            try:
+                                try:
+                                    color_obj = ColorModel.objects.filter(pk=int(val), is_active=True).first()
+                                except Exception:
+                                    color_obj = ColorModel.objects.filter(name__iexact=str(val)).first()
+                            except Exception:
+                                color_obj = None
+
+                        if color_obj is not None:
+                            if hasattr(clone, "color_id"):
+                                clone.color_id = getattr(color_obj, "id", None)
+                            elif hasattr(clone, "color") and hasattr(getattr(type(clone), "color", None), "field"):
+                                try:
+                                    clone.color = color_obj
+                                except Exception:
+                                    try:
+                                        clone.color = getattr(color_obj, "name", str(color_obj))
+                                    except Exception:
+                                        pass
+                            else:
+                                if hasattr(clone, "color"):
+                                    try:
+                                        clone.color = getattr(color_obj, "name", str(color_obj))
+                                    except Exception:
+                                        clone.color = str(color_obj)
+                                elif hasattr(clone, "color_name"):
+                                    try:
+                                        clone.color_name = getattr(color_obj, "name", str(color_obj))
+                                    except Exception:
+                                        clone.color_name = str(color_obj)
+                                else:
+                                    try:
+                                        setattr(clone, "color", getattr(color_obj, "name", str(color_obj)))
+                                    except Exception:
+                                        pass
+                        else:
+                            raw_color_val = str(val)
+                            if hasattr(clone, "color"):
+                                clone.color = raw_color_val
+                            elif hasattr(clone, "color_name"):
+                                clone.color_name = raw_color_val
+
+                        clone.save()
+                        created_count += 1
+
+            messages.success(self.request, f"Created {created_count} costing record(s).")
+            return redirect(self.get_success_url())
+        except Exception as e:
+            messages.error(self.request, f"Could not create costing record(s): {e}")
+            return self.form_invalid(form)
 
     def get_initial(self):
         initial = super().get_initial() or {}
@@ -260,14 +413,10 @@ class CostingSheetCreateView(CreateView):
 
     def get_context_data(self, **kwargs):
         """
-        Strict behavior (no fallbacks):
-        1) ctx['categories'] = categories from category_master.CategoryMaster (first dropdown).
-           First dropdown auto-fill fields (GF, Texas, Shipping, Import) should be obtained
-           by calling ajax_get_category_details which reads CategoryMaster only.
-
-        2) ctx['costing_master_json'] = categories & sizes from category_master_new.Category
-           and category_master_new.CategorySize. Each size contains stitching/finishing/packaging
-           (used to fill Stitching (INR), Finishing (INR), Packaging (INR) for the second dropdown).
+        Provide:
+          - categories: list from category_master.CategoryMaster for server-first dropdown
+          - costing_master_json: combined categories & sizes from category_master_new (Category, CategorySize)
+          - colors_list_url: explicit URL for colors_list_json to avoid NoReverseMatch in templates
         """
         ctx = super().get_context_data(**kwargs)
         form = ctx.get("form")
@@ -276,17 +425,13 @@ class CostingSheetCreateView(CreateView):
             form = FormClass(initial=self.get_initial())
             ctx["form"] = form
 
-        # Models (strict usage)
         CatPrimary = _get_model("category_master", "CategoryMaster")
         CatNew = _get_model("category_master_new", "Category")
         CatSize = _get_model("category_master_new", "CategorySize")
 
-        # ordering decision
         cat_order_field = _get_order_field_for_model(CatPrimary) or _get_order_field_for_model(CatNew)
 
-        # -------------------------
-        # First dropdown (CategoryMaster) — server-rendered list
-        # -------------------------
+        # categories for first dropdown (CategoryMaster)
         categories_list: List[Dict] = []
         if CatPrimary:
             try:
@@ -307,12 +452,9 @@ class CostingSheetCreateView(CreateView):
                 categories_list = []
         ctx["categories"] = categories_list
 
-        # keep server-side size_masters empty — second dropdown sizes come from costing_master_json (CatNew)
         ctx["size_masters"] = []
 
-        # -------------------------
-        # Second dropdown: build costing_master_json from category_master_new (strict)
-        # -------------------------
+        # costing_master_json (Category -> sizes)
         try:
             normalized_cats: List[Dict] = []
             normalized_sizes: Dict[str, List[Dict]] = {}
@@ -337,7 +479,6 @@ class CostingSheetCreateView(CreateView):
                     except Exception:
                         continue
 
-                # For each category (CatNew), load sizes from CategorySize only
                 if CatSize:
                     for cat in normalized_cats:
                         cid = cat.get("id")
@@ -352,7 +493,6 @@ class CostingSheetCreateView(CreateView):
                                 arr.append(rd)
                         normalized_sizes[str(cid)] = arr
 
-            # Ensure there is at least 'none' key
             if "none" not in normalized_sizes:
                 normalized_sizes["none"] = []
 
@@ -366,6 +506,12 @@ class CostingSheetCreateView(CreateView):
         except Exception:
             ctx["costing_master_json"] = json.dumps({"categories": [], "sizes_by_category": {}, "components": {}})
             ctx["categories_master_json"] = []
+
+        # Provide explicit colors_list_url for templates to avoid reverse missing errors.
+        try:
+            ctx["colors_list_url"] = reverse("costing_sheet:colors_list_json")
+        except Exception:
+            ctx["colors_list_url"] = "/costing/ajax/colors/"
 
         return ctx
 
@@ -417,8 +563,6 @@ def delete_costing_sheet(request: HttpRequest, pk: int):
 def ajax_get_sizes(request: HttpRequest):
     """
     Return sizes for a given category_id from category_master_new.CategorySize only.
-    Sizes rows include stitching/finishing/packaging (INR) for the second dropdown.
-    Also returns category metadata (id/name/description) from category_master_new.Category only.
     """
     cat_id = request.GET.get("category_id")
     if not cat_id:
@@ -438,7 +582,6 @@ def ajax_get_sizes(request: HttpRequest):
             if rd:
                 sizes.append(rd)
 
-    # category metadata strictly from CatNew
     category_meta = None
     if CatNew:
         try:
@@ -459,8 +602,6 @@ def ajax_get_sizes(request: HttpRequest):
 def ajax_get_category_details(request: HttpRequest):
     """
     Return GF/Tax/Shipping/Import fields for a category id — strictly from category_master.CategoryMaster.
-    Intended to service the first dropdown's auto-fill fields:
-      GF (%), Texas Buying (%), Texas Retail (%), Shipping (INR), TX -> US (%), Import (%).
     """
     category_id = request.GET.get("category_id")
     if not category_id:
@@ -474,7 +615,6 @@ def ajax_get_category_details(request: HttpRequest):
     if not category_obj:
         return JsonResponse({"error": "Category not found"}, status=404)
 
-    # Use actual field names from CategoryMaster model
     component = {
         "component": getattr(category_obj, "name", str(category_obj)),
         "gf_percent": _decimal_to_str(getattr(category_obj, "gf_overhead", 0)),
@@ -485,7 +625,6 @@ def ajax_get_category_details(request: HttpRequest):
         "import_percent": _decimal_to_str(getattr(category_obj, "import_cost", 0)),
     }
 
-    # optional: include size info from CategorySize if size_id is provided
     size_payload = None
     size_id = request.GET.get("size_id")
     if size_id:
@@ -518,11 +657,23 @@ def ajax_get_category_details(request: HttpRequest):
 
 @login_required
 def ajax_get_component_details(request: HttpRequest):
+    """
+    Returns ComponentMaster details + ALL associated colors.
+    """
     comp_id = request.GET.get("component_id")
     if not comp_id:
         return JsonResponse({"error": "component_id is required"}, status=400)
 
-    ComponentModel = _get_model("components", "ComponentMaster") or _get_model("component_master", "ComponentMaster")
+    ComponentModel = (
+        _get_model("components", "ComponentMaster")
+        or _get_model("component_master", "ComponentMaster")
+    )
+    ColorModel = (
+        _get_model("components", "Color")
+        or _get_model("components", "ComponentColor")
+        or _get_model("component_master", "Color")
+    )
+
     if not ComponentModel:
         return JsonResponse({"error": "Component model not found"}, status=500)
 
@@ -547,27 +698,148 @@ def ajax_get_component_details(request: HttpRequest):
         "width_uom": getattr(comp, "width_uom", "inch") or "inch",
         "price_per_sqfoot": _decimal_to_str(getattr(comp, "price_per_sqfoot", getattr(comp, "price_per_sqft", 0))),
         "final_cost": _decimal_to_str(getattr(comp, "final_cost", 0)),
-        "final_price_per_unit": _decimal_to_str(getattr(comp, "final_price_per_unit", 0)),
     }
 
-    return JsonResponse({"component": comp_payload})
+    color_list = []
+
+    # CASE A: reverse relation e.g. comp.colors.all()
+    possible_attrs = ["colors", "component_colors", "color_set", "colours"]
+    found_attr = None
+    for attr in possible_attrs:
+        if hasattr(comp, attr):
+            found_attr = attr
+            break
+
+    if found_attr:
+        try:
+            qs = getattr(comp, found_attr).all()
+            for c in qs:
+                color_list.append({
+                    "id": getattr(c, "id", None),
+                    "name": getattr(c, "name", str(c)),
+                    "hex": getattr(c, "hex_code", ""),
+                    "is_active": getattr(c, "is_active", True),
+                })
+        except Exception:
+            pass
+
+    # CASE B: ColorModel with component_id FK
+    if not color_list and ColorModel:
+        try:
+            qs = ColorModel.objects.filter(component_id=comp_id, is_active=True)
+        except Exception:
+            qs = ColorModel.objects.none()
+        for c in qs:
+            color_list.append({
+                "id": getattr(c, "id", None),
+                "name": getattr(c, "name", str(c)),
+                "hex": getattr(c, "hex_code", ""),
+                "is_active": getattr(c, "is_active", True),
+            })
+
+    # CASE C: comma-separated string field on component
+    if not color_list:
+        for attr in ["color_list", "colors_list", "colors_csv", "colors_string"]:
+            if hasattr(comp, attr):
+                raw = getattr(comp, attr)
+                if raw:
+                    parts = [p.strip() for p in str(raw).split(",") if p.strip()]
+                    for p in parts:
+                        color_list.append({"id": None, "name": p, "hex": "", "is_active": True})
+                break
+
+    return JsonResponse({
+        "component": comp_payload,
+        "colors": color_list,
+    })
 
 
-# ---------- NEW: SKU compute endpoint ----------
+# ---------- NEW: colors_list_json compatibility endpoint ----------
+@login_required
+def colors_list_json(request: HttpRequest):
+    """
+    Compatibility endpoint expected by some templates:
+    Returns a simple JSON list of colors for a component_id GET param.
+    """
+    comp_id = request.GET.get("component_id")
+    if not comp_id:
+        return JsonResponse({"error": "component_id is required"}, status=400)
+
+    ComponentModel = (
+        _get_model("components", "ComponentMaster")
+        or _get_model("component_master", "ComponentMaster")
+    )
+    ColorModel = (
+        _get_model("components", "Color")
+        or _get_model("components", "ComponentColor")
+        or _get_model("component_master", "Color")
+    )
+
+    if not ComponentModel:
+        return JsonResponse({"error": "Component model not found"}, status=500)
+
+    try:
+        comp = ComponentModel.objects.filter(pk=comp_id).first()
+    except Exception:
+        comp = None
+
+    if not comp:
+        return JsonResponse({"error": "Component not found"}, status=404)
+
+    colors = []
+
+    possible_attrs = ["colors", "component_colors", "color_set", "colours"]
+    found_attr = None
+    for attr in possible_attrs:
+        if hasattr(comp, attr):
+            found_attr = attr
+            break
+
+    if found_attr:
+        try:
+            qs = getattr(comp, found_attr).all()
+            for c in qs:
+                colors.append({
+                    "id": getattr(c, "id", None),
+                    "name": getattr(c, "name", str(c)),
+                    "hex": getattr(c, "hex_code", ""),
+                    "is_active": getattr(c, "is_active", True),
+                })
+        except Exception:
+            pass
+
+    if not colors and ColorModel:
+        try:
+            qs = ColorModel.objects.filter(component_id=comp_id, is_active=True)
+        except Exception:
+            qs = ColorModel.objects.none()
+        for c in qs:
+            colors.append({
+                "id": getattr(c, "id", None),
+                "name": getattr(c, "name", str(c)),
+                "hex": getattr(c, "hex_code", ""),
+                "is_active": getattr(c, "is_active", True),
+            })
+
+    if not colors:
+        for attr in ["color_list", "colors_list", "colors_csv", "colors_string"]:
+            if hasattr(comp, attr):
+                raw = getattr(comp, attr)
+                if raw:
+                    parts = [p.strip() for p in str(raw).split(",") if p.strip()]
+                    for p in parts:
+                        colors.append({"id": None, "name": p, "hex": "", "is_active": True})
+                break
+
+    return JsonResponse({"colors": colors})
+
+
+# ---------- SKU compute endpoint ----------
 @login_required
 def ajax_compute_sku(request: HttpRequest):
     """
-    Compute SKU from posted inputs without saving:
-      Inputs (GET or POST):
-        - category_id (legacy CategoryMaster id) OR category_label (string)
-        - name
-        - collection
-        - color
-        - size
-    Resolution of category label:
-      If category_label provided -> use it.
-      Else, try to fetch CategoryMaster by category_id and use its name/title/str().
-    Returns {"sku": "<computed or empty string>"}.
+    Compute SKU from inputs without saving. Returns {"sku": "..."}.
+    Accepts GET or POST.
     """
     method_data = request.POST if request.method == "POST" else request.GET
 
@@ -578,23 +850,34 @@ def ajax_compute_sku(request: HttpRequest):
     color_val = (method_data.get("color") or "").strip()
     size_val = (method_data.get("size") or "").strip()
 
-    if not category_label:
-        if category_id:
-            CatPrimary = _get_model("category_master", "CategoryMaster")
-            cat_obj = None
-            if CatPrimary:
-                try:
-                    cat_obj = CatPrimary.objects.filter(pk=category_id).first()
-                except Exception:
-                    cat_obj = None
-            if cat_obj:
-                category_label = getattr(cat_obj, "name", None) or getattr(cat_obj, "title", None) or str(cat_obj)
+    # Accept color_id and resolve to name if possible
+    color_id = method_data.get("color_id")
+    if color_id and not color_val:
+        ColorModel = _get_model("components", "Color") or _get_model("component_master", "Color")
+        if ColorModel:
+            try:
+                cobj = ColorModel.objects.filter(pk=color_id).first()
+            except Exception:
+                cobj = None
+            if cobj:
+                color_val = getattr(cobj, "name", str(cobj))
+
+    if not category_label and category_id:
+        CatPrimary = _get_model("category_master", "CategoryMaster")
+        cat_obj = None
+        if CatPrimary:
+            try:
+                cat_obj = CatPrimary.objects.filter(pk=category_id).first()
+            except Exception:
+                cat_obj = None
+        if cat_obj:
+            category_label = getattr(cat_obj, "name", None) or getattr(cat_obj, "title", None) or str(cat_obj)
 
     sku = _compute_sku_server(category_label, name_val, collection_val, color_val, size_val)
     return JsonResponse({"sku": sku})
 
 
-# ---------- Accessory endpoints (unchanged) ----------
+# ---------- Accessory endpoints ----------
 @login_required
 def ajax_list_accessories(request: HttpRequest):
     Accessory = _get_model("rawmaterials", "Accessory")

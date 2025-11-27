@@ -1,5 +1,5 @@
-{# templates/base.html #}
 {% load static %}
+<!-- reference image: /mnt/data/5c2095f2-b8aa-4d05-82d8-2b1e97343ed9.png -->
 <!doctype html>
 <html>
 <head>
@@ -11,14 +11,68 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
   <style>
-    body { min-height: 100vh; background: #ffffff; }
-    .sidebar { min-height: 85vh; }
-    .content-area { padding-top: 1rem; }
-    .nav-link.active { font-weight: 600; }
-    .brand-small { font-size: 0.95rem; }
-    .user-greet { font-size: 0.95rem; color: #333; }
+    /* Theme variables: navy primary, bright-blue accent, white content */
+    :root{
+      --primary: #0b2740;   /* deep navy */
+      --accent:  #1e90ff;   /* bright blue / dodger-like */
+      --bg:      #ffffff;   /* main content background */
+      --muted:   #f1f5f9;   /* light neutral */
+      --text-dark: #212529;
+      --sidebar-text: #ffffff;
+      --danger:  #dc3545;
+      --badge-bg: #e84545;
+    }
+
+    /* Base */
+    html,body { height:100%; }
+    body { min-height: 100vh; background: var(--bg); color: var(--text-dark); font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+
+    /* Top navbar */
+    .navbar {
+      background: linear-gradient(90deg, rgba(11,39,64,0.95), rgba(11,39,64,0.85));
+      color: var(--sidebar-text);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .navbar .brand-small { color: var(--sidebar-text); font-weight:600; }
+    .navbar .btn-outline-secondary { color: rgba(255,255,255,0.9); border-color: rgba(255,255,255,0.15); }
+    .navbar .btn-outline-secondary:hover { background: rgba(255,255,255,0.04); }
+
+    /* Layout */
+    .sidebar { min-height: 85vh; background: var(--primary); color: var(--sidebar-text); padding-top: 1rem; border-right: 1px solid rgba(255,255,255,0.03); }
+    .sidebar .nav-link { color: rgba(255,255,255,0.85); border-radius: 0.375rem; padding: 0.5rem 0.75rem; }
+    .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,0.03); text-decoration: none; }
+    .sidebar .nav-link.active {
+      background: linear-gradient(90deg, rgba(30,144,255,0.12), rgba(30,144,255,0.05));
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(14, 49, 78, 0.12);
+      border-left: 3px solid var(--accent);
+    }
+    .sidebar strong { color: rgba(255,255,255,0.75); font-size: .88rem; display:block; margin-bottom:.5rem; }
+
+    /* Buttons in sidebar */
+    .sidebar .btn-sm {
+      font-size: 0.78rem;
+      padding: 0.28rem 0.5rem;
+      background: transparent;
+      color: #fff;
+      border-color: rgba(255,255,255,0.18);
+    }
+    .sidebar .btn-sm.btn-outline-primary { color: var(--accent); border-color: rgba(30,144,255,0.18); background: rgba(255,255,255,0.02); }
+    .sidebar .btn-sm.btn-outline-primary:hover { background: rgba(30,144,255,0.06); color: #fff; }
+
+    /* Main content */
+    .content-area { padding-top: 1rem; background: var(--bg); min-height: 85vh; }
+    .container h4 { color: var(--text-dark); }
+
+    /* User greet / badges */
+    .user-greet { font-size: 0.95rem; color: rgba(255,255,255,0.95); }
     .role-badge { font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
-    .notif-bell, .notif-chat { position: relative; display: inline-block; }
+    .badge.bg-primary.role-badge { background: var(--accent); color: #fff; }
+    .badge.bg-secondary.role-badge { background: rgba(255,255,255,0.12); color: #fff; }
+
+    /* Notification/chat */
+    .notif-bell, .notif-chat { position: relative; display: inline-block; color: rgba(255,255,255,0.95); }
     .badge-unread {
       position: absolute;
       top: -6px;
@@ -26,39 +80,49 @@
       font-size: 0.65rem;
       padding: 0.25rem 0.4rem;
       transform: translate(0, 0);
+      background: var(--danger);
+      color: #fff;
+      border-radius: 999px;
+      box-shadow: 0 2px 6px rgba(11,39,64,0.25);
     }
 
     /* SKU Preview Styling */
     .sku-box {
-      background-color: #f8f9fa;
-      border: 1px solid #dee2e6;
+      background-color: var(--muted);
+      border: 1px solid rgba(11,39,64,0.06);
       border-radius: 0.375rem;
       padding: 0.5rem 0.75rem;
       font-weight: 600;
       letter-spacing: 0.5px;
-      color: #333;
+      color: var(--text-dark);
       min-height: 38px;
-      transition: background-color 0.3s ease-in-out;
+      transition: background-color 0.3s ease-in-out, box-shadow .25s ease;
     }
-    .sku-box.updated { background-color: #e7f1ff; }
-    @keyframes skuFade { from { background-color: #d0e7ff; } to { background-color: #f8f9fa; } }
+    .sku-box.updated { background-color: rgba(30,144,255,0.06); border-color: rgba(30,144,255,0.12); box-shadow: 0 6px 18px rgba(30,144,255,0.06); }
+    @keyframes skuFade { from { background-color: rgba(30,144,255,0.12); } to { background-color: var(--muted); } }
     .sku-fade { animation: skuFade 0.7s ease-in-out; }
 
-    /* Section highlight (yellow) */
-    .section-yellow { color: #ffc107; font-weight: 600; }
-    .under-construction-note { font-size: 0.825rem; color: #6c757d; margin: 0.35rem 0 0.5rem 0; display: block; }
+    /* Accent instead of yellow */
+    .section-accent { color: var(--accent); font-weight: 700; }
+    .section-accent .nav-link { color: var(--accent); }
 
-    /* Small responsive tweak for sidebar collapse caret spacing */
-    .caret { font-size: 0.85rem; opacity: 0.6; }
-
-    /* Minor styling for small buttons in sidebar */
+    /* Caret and small tweaks */
+    .caret { font-size: 0.85rem; opacity: 0.9; color: rgba(255,255,255,0.6); }
     .sidebar .btn-sm { font-size: 0.78rem; padding: 0.28rem 0.5rem; }
+
+    /* Alerts in content - keep bootstrap defaults but subtle border */
+    .alert { border-radius: 0.4rem; }
+
+    /* Responsive: make offcanvas look like sidebar on small screens when toggled */
+    @media (max-width: 991px) {
+      .navbar { padding-left: .75rem; padding-right: .75rem; }
+    }
   </style>
 
   {% block head_extra %}{% endblock %}
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
+<nav class="navbar navbar-expand-lg navbar-light">
   <div class="container-fluid">
     {% if request.user.is_authenticated %}
       <button class="btn btn-outline-secondary d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#sideMenu" aria-controls="sideMenu">
@@ -71,13 +135,12 @@
 
     <div class="d-flex align-items-center ms-auto gap-3">
       {% if user.is_authenticated %}
-        {# safe resolve workorders notifications url #}
         {% url 'workorders:notifications' as workorders_notifications_url %}
         <div>
           <a href="{{ workorders_notifications_url|default:'#' }}" class="text-decoration-none notif-bell" title="Notifications">
             🔔
             {% if unread_notifications_count|default:0 %}
-              <span class="badge bg-danger rounded-pill badge-unread">{{ unread_notifications_count }}</span>
+              <span class="badge rounded-pill badge-unread">{{ unread_notifications_count }}</span>
             {% endif %}
           </a>
         </div>
@@ -87,14 +150,13 @@
           <a href="{{ chat_room_url|default:'#' }}" class="btn btn-outline-primary btn-sm notif-chat" title="Chat">
             💬 Chat
             {% if unread_chat_count|default:0 %}
-              <span class="badge bg-danger rounded-pill badge-unread">{{ unread_chat_count }}</span>
+              <span class="badge rounded-pill badge-unread">{{ unread_chat_count }}</span>
             {% endif %}
           </a>
         </div>
 
         <div class="me-3 user-greet">
           Hi {{ user.get_full_name|default:user.username }}
-          {% comment %} use safe permission checks; if perms variable missing, template handles it gracefully {% endcomment %}
           {% if user.is_superuser or perms.components.add_costcomponent %}
             <span class="ms-2 badge bg-primary role-badge">Admin</span>
           {% else %}
@@ -118,7 +180,7 @@
   <div class="row">
 
     {% if request.user.is_authenticated %}
-      <nav class="col-lg-2 d-none d-lg-block bg-light sidebar p-3">
+      <nav class="col-lg-2 d-none d-lg-block sidebar">
         <ul class="nav flex-column">
           {% url 'core:dashboard' as core_dashboard_url %}
           <li class="nav-item mb-2">
@@ -182,7 +244,6 @@
             </div>
           </li>
 
-          {# ====== NEW: ISSUE MATERIAL SECTION (placed directly below Raw Material) ====== #}
           <li class="nav-item mt-3"><strong class="px-1">Issue Material</strong></li>
           {% url 'issue_material:issue_list' as issue_list_url %}
           <li class="nav-item">
@@ -193,7 +254,7 @@
                aria-expanded="{% if request.path|slice:'0:14' == '/issue-material' %}true{% else %}false{% endif %}"
                aria-controls="issueMaterialSubmenu">
               <span>Issue Orders</span>
-              <span class="caret"></span>
+              <span class="caret">▸</span>
             </a>
 
             <div class="collapse {% if request.path|slice:'0:14' == '/issue-material' %}show{% endif %}" id="issueMaterialSubmenu">
@@ -215,9 +276,8 @@
               </ul>
             </div>
           </li>
-          {# ====== END Issue Material Section ====== #}
 
-          <!-- ====== COMPONENT MASTER ====== -->
+          <!-- COMPONENT MASTER -->
           <li class="nav-item mt-3"><strong class="px-1">Component Master</strong></li>
           {% url 'components:master_list' as components_master_list_url %}
           <li class="nav-item">
@@ -228,7 +288,7 @@
                aria-expanded="{% if request.path|slice:'0:15' == '/components/master' %}true{% else %}false{% endif %}"
                aria-controls="componentMasterSubmenu">
               <span>Manage Components</span>
-              <span class="caret"></span>
+              <span class="caret">▸</span>
             </a>
 
             <div class="collapse {% if request.path|slice:'0:15' == '/components/master' %}show{% endif %}" id="componentMasterSubmenu">
@@ -253,7 +313,7 @@
             </div>
           </li>
 
-          <!-- ====== CATEGORY MASTER NEW ====== -->
+          <!-- CATEGORY MASTER NEW -->
           <li class="nav-item mt-3"><strong class="px-1">Category Master New</strong></li>
           {% url 'category_master_new:category_list' as category_master_new_list_url %}
           <li class="nav-item">
@@ -264,7 +324,7 @@
                aria-expanded="{% if request.path|slice:'0:18' == '/category-master-new' %}true{% else %}false{% endif %}"
                aria-controls="categoryMasterNewSubmenu">
               <span>Manage (New)</span>
-              <span class="caret"></span>
+              <span class="caret">▸</span>
             </a>
 
             <div class="collapse {% if request.path|slice:'0:18' == '/category-master-new' %}show{% endif %}" id="categoryMasterNewSubmenu">
@@ -289,7 +349,7 @@
             </div>
           </li>
 
-          <!-- ====== CATEGORY MASTER ====== -->
+          <!-- CATEGORY MASTER -->
           <li class="nav-item mt-3"><strong class="px-1">Category Master</strong></li>
           {% url 'category_master:list' as category_master_list_url %}
           <li class="nav-item">
@@ -300,7 +360,7 @@
                aria-expanded="{% if request.path|slice:'0:16' == '/category-master' %}true{% else %}false{% endif %}"
                aria-controls="categoryMasterSubmenu">
               <span>Manage Categories</span>
-              <span class="caret"></span>
+              <span class="caret">▸</span>
             </a>
 
             <div class="collapse {% if request.path|slice:'0:16' == '/category-master' %}show{% endif %}" id="categoryMasterSubmenu">
@@ -329,7 +389,7 @@
             </div>
           </li>
 
-          <!-- ====== SIZE MASTER ====== -->
+          <!-- SIZE MASTER -->
           <li class="nav-item mt-3"><strong class="px-1">Size Master</strong></li>
           {% url 'size_master:list' as size_master_list_url %}
           <li class="nav-item">
@@ -340,7 +400,7 @@
                aria-expanded="{% if request.path|slice:'0:12' == '/size-master' %}true{% else %}false{% endif %}"
                aria-controls="sizeMasterSubmenu">
               <span>Manage Sizes</span>
-              <span class="caret"></span>
+              <span class="caret">▸</span>
             </a>
 
             <div class="collapse {% if request.path|slice:'0:12' == '/size-master' %}show{% endif %}" id="sizeMasterSubmenu">
@@ -363,7 +423,7 @@
             </div>
           </li>
 
-          <!-- ====== COSTING SHEET (NEW) ====== -->
+          <!-- COSTING -->
           <li class="nav-item mt-3"><strong class="px-1">Costing</strong></li>
           {% url 'costing_sheet:list' as costing_list_url %}
           {% url 'costing_sheet:create' as costing_create_url %}
@@ -375,7 +435,7 @@
                aria-expanded="{% if request.path|slice:'0:8' == '/costing' %}true{% else %}false{% endif %}"
                aria-controls="costingSubmenu">
               <span>Costing Sheets</span>
-              <span class="caret"></span>
+              <span class="caret">▸</span>
             </a>
 
             <div class="collapse {% if request.path|slice:'0:8' == '/costing' %}show{% endif %}" id="costingSubmenu">
@@ -384,7 +444,6 @@
                   <a class="nav-link ms-2 {% if request.path == '/costing/' %}active{% endif %}" href="{{ costing_list_url|default:'#' }}">View Costing Sheets</a>
                 </li>
 
-                {# avoid parentheses in {% if %} - use nested checks to prevent TemplateSyntaxError #}
                 {% if costing_create_url %}
                   {% if user.is_superuser or perms.costing_sheet.add_costingsheet %}
                     <li>
@@ -396,24 +455,24 @@
             </div>
           </li>
 
-          <!-- ====== FINISHED PRODUCTS ====== -->
-          <li class="nav-item mt-3"><strong class="px-1 section-yellow">Finished Products</strong></li>
+          <!-- FINISHED PRODUCTS (accent instead of yellow) -->
+          <li class="nav-item mt-3"><strong class="px-1 section-accent">Finished Products</strong></li>
           {% url 'finished_products:product_list' as fp_list_url %}
           <li class="nav-item">
-            <a class="nav-link d-flex justify-content-between align-items-center section-yellow"
+            <a class="nav-link d-flex justify-content-between align-items-center section-accent"
                data-bs-toggle="collapse"
                href="#finishedProductsSubmenu"
                role="button"
                aria-expanded="{% if request.path|slice:'0:17' == '/finished-products' %}true{% else %}false{% endif %}"
                aria-controls="finishedProductsSubmenu">
-              <span class="section-yellow">Manage Finished</span>
-              <span class="caret"></span>
+              <span class="section-accent">Manage Finished</span>
+              <span class="caret">▸</span>
             </a>
 
             <div class="collapse {% if request.path|slice:'0:17' == '/finished-products' %}show{% endif %}" id="finishedProductsSubmenu">
               <ul class="btn-toggle-nav list-unstyled fw-normal small ms-2">
                 <li>
-                  <a class="nav-link ms-2 section-yellow {% if request.path|slice:'0:17' == '/finished-products' and request.path != '/finished-products/new/' %}active{% endif %}" href="{{ fp_list_url|default:'#' }}">
+                  <a class="nav-link ms-2 section-accent {% if request.path|slice:'0:17' == '/finished-products' and request.path != '/finished-products/new/' %}active{% endif %}" href="{{ fp_list_url|default:'#' }}">
                     Product List
                   </a>
                 </li>
@@ -421,7 +480,7 @@
                 {% if user.is_superuser or perms.finished_products.add_finishedproduct %}
                   {% if fp_create_url %}
                     <li>
-                      <a class="nav-link ms-2 section-yellow {% if request.path == '/finished-products/new/' %}active{% endif %}" href="{{ fp_create_url }}">Create Product</a>
+                      <a class="nav-link ms-2 section-accent {% if request.path == '/finished-products/new/' %}active{% endif %}" href="{{ fp_create_url }}">Create Product</a>
                     </li>
                   {% endif %}
                 {% endif %}
@@ -429,27 +488,27 @@
             </div>
           </li>
 
-          <!-- ====== WORK ORDERS ====== -->
-          <li class="nav-item mt-3"><strong class="px-1 section-yellow">Work Orders</strong></li>
+          <!-- WORK ORDERS -->
+          <li class="nav-item mt-3"><strong class="px-1 section-accent">Work Orders</strong></li>
           {% url 'workorders:list' as workorders_list_url %}
           <li class="nav-item">
-            <a class="nav-link section-yellow {% if request.path|slice:'0:11' == '/workorders' %}active{% endif %}" href="{{ workorders_list_url|default:'#' }}">Work Orders</a>
+            <a class="nav-link section-accent {% if request.path|slice:'0:11' == '/workorders' %}active{% endif %}" href="{{ workorders_list_url|default:'#' }}">Work Orders</a>
           </li>
 
           {% if user.is_authenticated %}
             {% url 'dispatch:tracking' as dispatch_list_url %}
             {% url 'dispatch:new' as dispatch_new_url %}
-            <li class="nav-item mt-3"><strong class="px-1 section-yellow">Dispatch / Delivery</strong></li>
+            <li class="nav-item mt-3"><strong class="px-1 section-accent">Dispatch / Delivery</strong></li>
             <li class="nav-item">
-              <a class="nav-link d-flex justify-content-between align-items-center section-yellow {% if request.path|slice:'0:9' == '/dispatch' %}active{% endif %}" href="{{ dispatch_list_url|default:'#' }}">
-                <span class="section-yellow">Tracking List</span>
+              <a class="nav-link d-flex justify-content-between align-items-center section-accent {% if request.path|slice:'0:9' == '/dispatch' %}active{% endif %}" href="{{ dispatch_list_url|default:'#' }}">
+                <span class="section-accent">Tracking List</span>
                 {% if pending_dispatch_count|default:0 %}
-                  <span class="badge bg-danger rounded-pill ms-2">{{ pending_dispatch_count }}</span>
+                  <span class="badge rounded-pill" style="background:var(--danger); color:#fff;">{{ pending_dispatch_count }}</span>
                 {% endif %}
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link section-yellow {% if request.path|slice:'0:13' == '/dispatch/new' %}active{% endif %}" href="{{ dispatch_new_url|default:'#' }}">Create Dispatch</a>
+              <a class="nav-link section-accent {% if request.path|slice:'0:13' == '/dispatch/new' %}active{% endif %}" href="{{ dispatch_new_url|default:'#' }}">Create Dispatch</a>
             </li>
           {% endif %}
         </ul>
@@ -492,7 +551,6 @@
   })();
 </script>
 
-{# Costing module JS: include only if static file exists; keep as optional include #}
 {% if user.is_authenticated %}
   <script>
     (function(){

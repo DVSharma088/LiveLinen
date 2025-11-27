@@ -6,11 +6,11 @@ from django.forms import modelform_factory
 from django.core.exceptions import ValidationError
 
 """
-CostingSheet form factory (updated).
-- Exposes category_new/size_master and stitching/finishing/packaging
-  so the UI can present two dropdowns + auto-filled S/F/P inputs.
-- Adds 'collection', 'color', and read-only 'sku' to the form.
+CostingSheet form factory (modified).
+- Adds a 'colors' MultipleChoiceField to accept multiple selected colors (posted as colors[]).
+- Keeps legacy 'color' field for backward compatibility (UI may hide it).
 - Defensive: only includes model fields that actually exist.
+- Exposes category_new/size_master and stitching/finishing/packaging so JS can populate/select sizes.
 """
 
 TWOPLACES = Decimal("0.01")
@@ -42,7 +42,7 @@ def get_costing_sheet_form():
     desired = [
         "category", "category_new", "size_master", "name", "component_master",
         "width", "width_uom", "price_per_sqft", "final_cost",
-        "collection", "color",  # newly surfaced for SKU
+        "collection", "color",  # color kept for backward-compatibility (single-color)
         "average", "price_source", "hand_work",
         "accessory", "accessory_quantity",
         "shipping_cost_india", "shipping_cost_us", "shipping_cost_europe",
@@ -75,13 +75,27 @@ def get_costing_sheet_form():
     BaseForm = modelform_factory(CostingSheet, fields=available)
 
     class CostingSheetForm(BaseForm):
+        """
+        Form returned by get_costing_sheet_form()
+
+        New additions:
+          - colors: MultipleChoiceField (hidden widget by default) that accepts a list of selected color ids.
+                    JS should populate choices or submit colors[] directly. This allows server to receive
+                    which colors the user ticked to generate multiple SKUs.
+        """
+        colors = forms.MultipleChoiceField(
+            required=False,
+            widget=forms.MultipleHiddenInput(),  # JS can change to checkboxes in the template or keep hidden and POST array
+            help_text="Selected color ids (for multi-SKU generation)."
+        )
+
         class Meta(BaseForm.Meta):
             pass
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
-            # widget attrs for category / category_new / size_master
+            # --- Basic widget attributes ---
             if "category" in self.fields:
                 self.fields["category"].widget.attrs.update({
                     "id": "id_category_select",
@@ -109,7 +123,6 @@ def get_costing_sheet_form():
                     "class": "form-select",
                 })
 
-            # --- THIS BLOCK IS CORRECTED ---
             if "size_master" in self.fields:
                 try:
                     # Point the form field's queryset to the correct model
@@ -124,8 +137,10 @@ def get_costing_sheet_form():
                     "class": "form-select",
                 })
                 # Clear all choices. JS will populate this dropdown.
-                self.fields["size_master"].widget.choices = [("", "-- select size --")]
-            # --- END CORRECTION ---
+                try:
+                    self.fields["size_master"].widget.choices = [("", "-- select size --")]
+                except Exception:
+                    pass
 
             # drop legacy explicit "size" field from form (we keep model column but hide it in UI)
             if "size" in self.fields:
@@ -147,12 +162,14 @@ def get_costing_sheet_form():
                     "class": "form-control",
                     "placeholder": "e.g., Solid Color",
                 })
+            # legacy single color input (kept for compatibility)
             if "color" in self.fields:
                 self.fields["color"].widget.attrs.update({
                     "id": "id_color",
                     "class": "form-control",
                     "placeholder": "e.g., Angora White",
                 })
+
             if "sku" in self.fields:
                 # Show SKU as read-only; model will compute on save if blank
                 self.fields["sku"].widget.attrs.update({
@@ -190,44 +207,56 @@ def get_costing_sheet_form():
                 ("final_cost", "0.01", 2),
             ):
                 if num_field in self.fields:
-                    self.fields[num_field].widget.attrs.update({
-                        "id": f"id_{num_field}",
-                        "class": "form-control",
-                        "step": step,
-                        "min": "0"
-                    })
+                    try:
+                        self.fields[num_field].widget.attrs.update({
+                            "id": f"id_{num_field}",
+                            "class": "form-control",
+                            "step": step,
+                            "min": "0"
+                        })
+                    except Exception:
+                        pass
 
             # stitching / finishing / packaging widgets (exposed, readonly by default but included in POST)
             for f in ("stitching", "finishing", "packaging"):
                 if f in self.fields:
-                    self.fields[f].widget.attrs.update({
-                        "id": f"id_new_{f}" if f != "packaging" else "id_new_packaging",
-                        "class": "form-control",
-                        "step": "0.01",
-                        "min": "0",
-                        # keep them editable if you want; default readonly in UI can be toggled
-                        # set readonly so JS controls values (but they will still POST)
-                        "readonly": "readonly"
-                    })
+                    try:
+                        self.fields[f].widget.attrs.update({
+                            "id": f"id_new_{f}" if f != "packaging" else "id_new_packaging",
+                            "class": "form-control",
+                            "step": "0.01",
+                            "min": "0",
+                            # keep them editable if you want; default readonly in UI can be toggled
+                            # set readonly so JS controls values (but they will still POST)
+                            "readonly": "readonly"
+                        })
+                    except Exception:
+                        pass
 
             # average widget
             if "average" in self.fields:
-                self.fields["average"].widget.attrs.update({
-                    "id": "id_average",
-                    "class": "form-control",
-                    "step": "0.001",
-                    "min": "0"
-                })
+                try:
+                    self.fields["average"].widget.attrs.update({
+                        "id": "id_average",
+                        "class": "form-control",
+                        "step": "0.001",
+                        "min": "0"
+                    })
+                except Exception:
+                    pass
 
             # shipping inputs
             for f in ("shipping_cost_india", "shipping_cost_us", "shipping_cost_europe"):
                 if f in self.fields:
-                    self.fields[f].widget.attrs.update({
-                        "id": f"id_{f}",
-                        "class": "form-control",
-                        "step": "0.01",
-                        "min": "0"
-                    })
+                    try:
+                        self.fields[f].widget.attrs.update({
+                            "id": f"id_{f}",
+                            "class": "form-control",
+                            "step": "0.01",
+                            "min": "0"
+                        })
+                    except Exception:
+                        pass
 
             # computed/read-only fields: make them readonly in UI if present
             for f in (
@@ -235,20 +264,26 @@ def get_costing_sheet_form():
                 "texas_retail", "texas_us_selling_cost", "us_buying_cost_usd", "us_wholesale_cost"
             ):
                 if f in self.fields:
-                    self.fields[f].widget.attrs.update({
-                        "id": f"id_{f}",
-                        "class": "form-control",
-                        "readonly": "readonly"
-                    })
+                    try:
+                        self.fields[f].widget.attrs.update({
+                            "id": f"id_{f}",
+                            "class": "form-control",
+                            "readonly": "readonly"
+                        })
+                    except Exception:
+                        pass
 
             # accessory widget attrs
             if "accessory_quantity" in self.fields:
-                self.fields["accessory_quantity"].widget.attrs.update({
-                    "id": "id_accessory_quantity",
-                    "class": "form-control",
-                    "min": "0",
-                    "step": "1"
-                })
+                try:
+                    self.fields["accessory_quantity"].widget.attrs.update({
+                        "id": "id_accessory_quantity",
+                        "class": "form-control",
+                        "min": "0",
+                        "step": "1"
+                    })
+                except Exception:
+                    pass
 
             # Build master_data: categories, sizes_by_category, components
             self.master_data = {"categories": [], "sizes_by_category": {}, "components": {}}
@@ -275,7 +310,7 @@ def get_costing_sheet_form():
                     try:
                         display = str(cm)
                     except Exception:
-                        display = getattr(cm, "name", "") or getattr(cm, "quality", "") or cm.pk
+                        display = getattr(cm, "name", "") or getattr(cm, "quality", "") or getattr(cm, "pk", "")
                     self.master_data["components"][str(getattr(cm, "id", ""))] = {
                         "id": getattr(cm, "id", None),
                         "display_name": _safe_str(display),
@@ -374,7 +409,6 @@ def get_costing_sheet_form():
                     self.master_data["categories"].append(cat_item)
 
             # Build sizes_by_category from category_master_new.Category if possible
-            # Try to pull related sizes in a few common patterns
             try:
                 CatNewModel = apps.get_model("category_master_new", "Category")
             except LookupError:
@@ -392,7 +426,6 @@ def get_costing_sheet_form():
                 # helper to extract sizes list from a category instance
                 def _extract_sizes_from_cat(cat):
                     sizes_list = []
-                    # candidate attributes holding sizes
                     candidate_attrs = ("sizes", "size_set", "size_list", "sizes_all", "size_master_set", "sizes_data", "sizes_json", "size_data")
                     for attr in candidate_attrs:
                         if hasattr(cat, attr):
@@ -405,7 +438,6 @@ def get_costing_sheet_form():
                                         seq = list(candidate)
                                     except Exception:
                                         seq = [candidate]
-                                # normalize each entry into a dict
                                 for item in seq:
                                     try:
                                         if isinstance(item, dict):
@@ -420,7 +452,6 @@ def get_costing_sheet_form():
                                                 "pack": pack
                                             })
                                         else:
-                                            # model-like object
                                             s_label = getattr(item, "size", None) or getattr(item, "label", None) or getattr(item, "name", None) or _safe_str(item)
                                             stitch = getattr(item, "stitch", None) or getattr(item, "stitching", None) or getattr(item, "stitching_cost", None) or 0
                                             finish = getattr(item, "finish", None) or getattr(item, "finishing", None) or getattr(item, "finish_cost", None) or 0
@@ -437,11 +468,9 @@ def get_costing_sheet_form():
                                     return sizes_list
                             except Exception:
                                 continue
-                    # fallback: attempt attribute 'sizes' that is a JSON string
                     try:
                         raw = getattr(cat, "sizes", None) or getattr(cat, "sizes_json", None) or getattr(cat, "sizes_data", None)
                         if raw:
-                            # if raw is str, try to parse simple delim format; else try iterate
                             if isinstance(raw, str):
                                 import re
                                 for part in raw.splitlines():
@@ -469,23 +498,63 @@ def get_costing_sheet_form():
 
                     return sizes_list
 
-                # iterate categories and populate sizes_by_category keyed by category id (and name as fallback)
                 for c in cat_objs:
                     try:
                         sizes = _extract_sizes_from_cat(c)
                         key = getattr(c, "id", None) or getattr(c, "pk", None) or _safe_str(getattr(c, "name", getattr(c, "title", c)))
                         if key is None:
                             key = _safe_str(c)
-                        # keep simple array of dicts
                         self.master_data["sizes_by_category"][str(key)] = sizes
-                        # also add an entry keyed by the category's display name for flexibility
                         display_key = _safe_str(getattr(c, "name", getattr(c, "title", None) or c))
                         if display_key:
-                            # avoid clobbering if already present
                             if str(display_key) not in self.master_data["sizes_by_category"]:
                                 self.master_data["sizes_by_category"][str(display_key)] = sizes
                     except Exception:
                         continue
+
+            # -----------------------
+            # Colors: populate choices with ComponentColor-ish model if present
+            # -----------------------
+            try:
+                # Try common possible models/locations for colors
+                ColorModel = None
+                for attempt in (
+                    ("components", "ComponentColor"),
+                    ("component_master", "ComponentColor"),
+                    ("components", "Color"),
+                    ("component_master", "Color"),
+                    ("components", "Component"),
+                    ("component_master", "Component"),
+                ):
+                    try:
+                        ColorModel = apps.get_model(attempt[0], attempt[1])
+                        if ColorModel:
+                            break
+                    except Exception:
+                        ColorModel = None
+                choices = []
+                if ColorModel:
+                    # If model has 'name' or 'color' attribute use it, else str()
+                    qs = ColorModel.objects.all().order_by("id")
+                    for col in qs:
+                        try:
+                            label = getattr(col, "name", None) or getattr(col, "color", None) or _safe_str(col)
+                            choices.append((str(getattr(col, "id", _safe_str(label))), _safe_str(label)))
+                        except Exception:
+                            continue
+                # set choices (can be empty)
+                self.fields["colors"].choices = choices
+                # expose widget attrs for potential JS use
+                try:
+                    self.fields["colors"].widget.attrs.update({"id": "id_colors"})
+                except Exception:
+                    pass
+            except Exception:
+                # On any failure, keep empty choices
+                try:
+                    self.fields["colors"].choices = []
+                except Exception:
+                    pass
 
         # ---- validators and cleaning methods ----
         def clean_average(self):
@@ -602,6 +671,24 @@ def get_costing_sheet_form():
                             pass
                 except Exception:
                     pass
+
+            # Normalize incoming colors: ensure list of strings (ids)
+            try:
+                colors_val = cleaned.get("colors")
+                if colors_val is None:
+                    # If client posted as colors (string comma separated), try parsing
+                    raw = (self.data.getlist("colors") if hasattr(self.data, "getlist") else None) or self.data.get("colors")
+                    if raw is None:
+                        cleaned["colors"] = []
+                    else:
+                        if isinstance(raw, (list, tuple)):
+                            cleaned["colors"] = [str(x) for x in raw if x is not None and str(x).strip()]
+                        else:
+                            # comma separated
+                            cleaned["colors"] = [s.strip() for s in str(raw).split(",") if s.strip()]
+            except Exception:
+                # keep as-is on failure
+                pass
 
             return cleaned
 

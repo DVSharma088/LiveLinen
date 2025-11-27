@@ -1,8 +1,9 @@
-// Updated component form logic (Nov 2025) — client-side fix applied
-// Hardened option construction to prefer label/type and to attach dataset metadata.
-
+// component_form.js (updated) — improved colors integration, robust fetch helper,
+// exposes window.COMPONENT_COLORS with load/render/create/delete API.
+// Place this file at static/components/js/component_form.js
 (function () {
   const log = (...a) => console.log("[component_form]", ...a);
+  const err = (...a) => console.error("[component_form]", ...a);
 
   function ready(fn) {
     if (document.readyState === "complete" || document.readyState === "interactive") {
@@ -73,26 +74,298 @@
       if (help) help.textContent = label || "";
     };
 
-    async function safeFetch(url, params) {
-      if (!url) throw new Error("URL not configured");
-      const q = new URLSearchParams(params || {}).toString();
-      const full = url + (q ? "?" + q : "");
-      const res = await fetch(full, {
-        credentials: "same-origin",
-        headers: { "X-CSRFToken": CSRF_TOKEN, Accept: "application/json" },
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(res.status + " on " + full + " " + txt);
-      }
-      return res.json();
+    function getComponentIdFromPath() {
+      // parse /master/<pk>/ or /master/<pk>/edit/
+      const m = window.location.pathname.match(/\/master\/(\d+)(\/|$)/);
+      if (m) return m[1];
+      // fallback to hidden field storing the component's own id (rare)
+      const hiddenComp = document.querySelector('input[name="component_id"], #id_component_id');
+      if (hiddenComp && hiddenComp.value) return hiddenComp.value;
+      return "";
     }
 
-    // ---------- Load Qualities ----------
+    async function safeFetch(url, params = {}, opts = {}) {
+      if (!url) throw new Error("URL not configured");
+      const method = (opts.method || "GET").toUpperCase();
+      let fullUrl = url;
+      let fetchOpts = {
+        method,
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      };
+
+      // attach CSRF for unsafe methods
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+        fetchOpts.headers["X-CSRFToken"] = CSRF_TOKEN;
+      }
+
+      if (method === "GET") {
+        const q = new URLSearchParams(params || {}).toString();
+        fullUrl = url + (q ? "?" + q : "");
+      } else {
+        // support both JSON and form-encoded bodies depending on opts.contentType
+        if (opts.contentType === "json") {
+          fetchOpts.headers["Content-Type"] = "application/json";
+          fetchOpts.body = JSON.stringify(params || {});
+        } else {
+          // default: form urlencoded
+          fetchOpts.headers["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8";
+          fetchOpts.body = new URLSearchParams(params || {}).toString();
+        }
+      }
+
+      const res = await fetch(fullUrl, fetchOpts);
+      const text = await res.text().catch(() => "");
+      // attempt to parse JSON; if not JSON, return text under .raw
+      try {
+        const json = text ? JSON.parse(text) : {};
+        if (!res.ok) {
+          const e = new Error(`Fetch ${res.status} ${res.statusText}`);
+          e.status = res.status;
+          e.body = json;
+          throw e;
+        }
+        return json;
+      } catch (parseErr) {
+        // if not JSON and not ok -> throw; if ok return raw text
+        if (!res.ok) {
+          const e = new Error(`Fetch ${res.status} ${res.statusText}`);
+          e.status = res.status;
+          e.body = text;
+          throw e;
+        }
+        return { raw: text };
+      }
+    }
+
+    // ---------- Colors integration (client API) ----------
+    async function loadColors(compId) {
+      if (!urls.colors_list) {
+        log("Colors endpoint not configured (urls.colors_list)");
+        return [];
+      }
+      if (!compId) compId = getComponentIdFromPath();
+      if (!compId) {
+        log("No component id — skipping colors load");
+        return [];
+      }
+      try {
+        const json = await safeFetch(urls.colors_list, { component_id: compId });
+        return json.results || [];
+      } catch (e) {
+        err("loadColors error", e);
+        return [];
+      }
+    }
+
+    async function createColor(compId, name) {
+      if (!urls.color_create) throw new Error("color_create URL not configured");
+      if (!compId) compId = getComponentIdFromPath();
+      if (!compId) throw new Error("Missing component id for createColor");
+      const payload = { component_id: compId, name: (name || "").trim() };
+      if (!payload.name) throw new Error("Empty color name");
+      try {
+        const resp = await safeFetch(urls.color_create, payload, { method: "POST" });
+        return resp;
+      } catch (e) {
+        err("createColor failed", e);
+        throw e;
+      }
+    }
+
+    async function deleteColor(colorId) {
+      if (!urls.color_delete) throw new Error("color_delete URL not configured");
+      if (!colorId) throw new Error("Missing color id");
+      try {
+        const resp = await safeFetch(urls.color_delete, { color_id: colorId }, { method: "POST" });
+        return resp;
+      } catch (e) {
+        err("deleteColor failed", e);
+        throw e;
+      }
+    }
+
+    function buildColorsContainer() {
+      // find or create container where colors UI will live
+      let container = document.getElementById("component-colors");
+      if (!container) {
+        // try to append below product select as fallback
+        const anchor = document.getElementById("component_product_help") || productEl || document.querySelector("form");
+        container = document.createElement("div");
+        container.id = "component-colors";
+        container.className = "mt-3";
+        if (anchor && anchor.parentNode) {
+          anchor.parentNode.insertBefore(container, anchor.nextSibling);
+        } else {
+          document.body.appendChild(container);
+        }
+      }
+      return container;
+    }
+
+    function defaultRenderColors(container, colors) {
+      container.innerHTML = ""; // clear
+
+      const title = document.createElement("div");
+      title.className = "mb-2";
+      title.innerHTML = "<strong>Colors</strong>";
+      container.appendChild(title);
+
+      // Add create box
+      const createWrap = document.createElement("div");
+      createWrap.className = "d-flex mb-2";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = "Add color (e.g. Red)";
+      input.className = "form-control me-2";
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "btn btn-sm btn-primary";
+      addBtn.textContent = "Add";
+      createWrap.appendChild(input);
+      createWrap.appendChild(addBtn);
+      container.appendChild(createWrap);
+
+      const list = document.createElement("div");
+      list.className = "list-group";
+      container.appendChild(list);
+
+      // render items
+      (colors || []).forEach((c) => {
+        const item = document.createElement("div");
+        item.className = "list-group-item d-flex align-items-center justify-content-between";
+        const left = document.createElement("div");
+        left.style.display = "flex";
+        left.style.alignItems = "center";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "form-check-input me-2 color-checkbox";
+        cb.dataset.colorId = c.id;
+        cb.id = `color_cb_${c.id}`;
+        left.appendChild(cb);
+
+        const lbl = document.createElement("label");
+        lbl.htmlFor = cb.id;
+        lbl.textContent = c.name;
+        left.appendChild(lbl);
+
+        item.appendChild(left);
+
+        const right = document.createElement("div");
+        // delete button
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "btn btn-sm btn-outline-danger ms-2 color-delete-btn";
+        del.textContent = "Delete";
+        del.dataset.colorId = c.id;
+        right.appendChild(del);
+
+        item.appendChild(right);
+        list.appendChild(item);
+      });
+
+      // attach behaviors
+      addBtn.addEventListener("click", async () => {
+        const val = input.value && input.value.trim();
+        if (!val) return;
+        addBtn.disabled = true;
+        try {
+          const compId = getComponentIdFromPath();
+          await createColor(compId, val);
+          input.value = "";
+          // reload and re-render
+          const newColors = await loadColors();
+          defaultRenderColors(container, newColors);
+          dispatchColorsChanged(newColors);
+        } catch (e) {
+          // show friendly inline error
+          window.alert((e && e.body && e.body.error) ? e.body.error : "Failed to create color");
+          err("Add color error", e);
+        } finally {
+          addBtn.disabled = false;
+        }
+      });
+
+      // delete handlers
+      Array.from(container.querySelectorAll(".color-delete-btn")).forEach((b) => {
+        b.addEventListener("click", async (ev) => {
+          const id = ev.currentTarget.dataset.colorId;
+          if (!id) return;
+          if (!confirm("Delete this color? (will be marked inactive)")) return;
+          try {
+            await deleteColor(id);
+            const newColors = await loadColors();
+            defaultRenderColors(container, newColors);
+            dispatchColorsChanged(newColors);
+          } catch (e) {
+            window.alert((e && e.body && e.body.error) ? e.body.error : "Failed to delete color");
+            err("Delete color error", e);
+          }
+        });
+      });
+
+      // checkbox change handler -> dispatch
+      Array.from(container.querySelectorAll(".color-checkbox")).forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const checked = Array.from(container.querySelectorAll(".color-checkbox:checked")).map((x) =>
+            x.dataset.colorId
+          );
+          // custom event so other scripts can react (eg. SKU generation)
+          const ev = new CustomEvent("colorsChanged", { detail: { checkedIds: checked } });
+          window.dispatchEvent(ev);
+        });
+      });
+    }
+
+    function dispatchColorsChanged(colors) {
+      // emit event with current active color ids (all present in colors array)
+      const ids = (colors || []).map((c) => String(c.id));
+      const ev = new CustomEvent("colorsLoaded", { detail: { ids, colors } });
+      window.dispatchEvent(ev);
+    }
+
+    // Expose a minimal API for other scripts (and templates) to use
+    window.COMPONENT_COLORS = {
+      load: async function (compId) {
+        try {
+          const cid = compId || getComponentIdFromPath();
+          const colors = await loadColors(cid);
+          const container = buildColorsContainer();
+          // allow template-level custom renderer if provided
+          if (window.COMPONENT_COLORS && typeof window.COMPONENT_COLORS.render === "function" && window.COMPONENT_COLORS._customRendererUsed) {
+            // if custom renderer already set by template, call it (but this branch is kept for clarity)
+            window.COMPONENT_COLORS.render(colors);
+          } else {
+            defaultRenderColors(container, colors);
+          }
+          dispatchColorsChanged(colors);
+          return colors;
+        } catch (e) {
+          err("COMPONENT_COLORS.load failed", e);
+          return [];
+        }
+      },
+      render: function (colors) {
+        // allow manual render into container
+        const container = buildColorsContainer();
+        defaultRenderColors(container, colors || []);
+        dispatchColorsChanged(colors || []);
+      },
+      create: async function (name, compId) {
+        return createColor(compId || getComponentIdFromPath(), name);
+      },
+      delete: async function (colorId) {
+        return deleteColor(colorId);
+      },
+      // allow template to override renderer: set window.COMPONENT_COLORS._customRendererUsed = true
+      _internal: { safeFetch, loadColors, createColor, deleteColor },
+    };
+
+    // ---------- Load Qualities / Types / Initial state ----------
     async function loadQualitiesByCategory(category) {
       if (!qualityEl) return;
 
-      // remember currently selected value so we can restore it if present
       const prevSelected = qualityEl.value || "";
 
       clearSelect(qualityEl, "-- Loading qualities... --");
@@ -112,19 +385,22 @@
         clearSelect(qualityEl, "-- Select quality --");
 
         results.forEach((r) => {
-          // normalize source fields (support many server shapes)
           const id = r.id !== undefined && r.id !== null ? String(r.id) : null;
-          const value = r.value !== undefined && r.value !== null ? String(r.value) : id || (r.label !== undefined && r.label !== null ? String(r.label) : "");
-          const label = r.label !== undefined && r.label !== null ? String(r.label) : (r.label_text !== undefined && r.label_text !== null ? String(r.label_text) : (id || String(value)));
+          const value =
+            r.value !== undefined && r.value !== null
+              ? String(r.value)
+              : id || (r.label !== undefined && r.label !== null ? String(r.label) : "");
+          const label =
+            r.label !== undefined && r.label !== null
+              ? String(r.label)
+              : r.label_text !== undefined && r.label_text !== null
+              ? String(r.label_text)
+              : id || String(value);
           const opt = document.createElement("option");
 
-          // value: prefer explicit value, then id, then label
           opt.value = value !== null ? value : "";
-
-          // visible text: prefer label, fall back to id or value
           opt.textContent = label;
 
-          // helpful metadata for debugging/consumers
           if (id) opt.dataset.id = id;
           if (label) opt.dataset.label = label;
           if (r.extra !== undefined) opt.dataset.extra = String(r.extra);
@@ -132,24 +408,19 @@
           qualityEl.appendChild(opt);
         });
 
-        // restore previous selection if still valid
         if (prevSelected) {
           try {
             qualityEl.value = prevSelected;
-            // force a change event to ensure UI reacts if value restored
             const ev = new Event("change", { bubbles: true });
             qualityEl.dispatchEvent(ev);
-          } catch (e) {
-            // ignore invalid restore
-          }
+          } catch (e) {}
         }
-      } catch (err) {
-        console.error("loadQualitiesByCategory error", err);
+      } catch (e) {
+        err("loadQualitiesByCategory error", e);
         clearSelect(qualityEl, "-- Error loading qualities --");
       }
     }
 
-    // ---------- Load Types ----------
     async function loadTypesByQuality(category, quality, search_q) {
       if (!productEl) return;
       const prevSelected = productEl.value || "";
@@ -169,18 +440,18 @@
         }
         clearSelect(productEl, "-- Select type --");
 
-        // Build options, preferring an explicit 'type' field from server.
         results.forEach((r) => {
-          // normalize common server shapes
           const id = r.id !== undefined && r.id !== null ? String(r.id) : null;
-          const value = r.value !== undefined && r.value !== null ? String(r.value) : id || (r.label !== undefined && r.label !== null ? String(r.label) : "");
+          const value =
+            r.value !== undefined && r.value !== null
+              ? String(r.value)
+              : id || (r.label !== undefined && r.label !== null ? String(r.label) : "");
           const rawType = (r.type !== undefined && r.type !== null) ? String(r.type).trim() : "";
           const label = (r.label !== undefined && r.label !== null) ? String(r.label).trim() : (rawType || (id ? `#${id}` : value));
 
           const o = document.createElement("option");
           o.value = value !== null ? value : "";
 
-          // prefer explicit type text to show in the UI; fall back to label, then id
           if (rawType) {
             o.textContent = rawType;
             o.dataset.type = rawType;
@@ -192,7 +463,6 @@
             o.dataset.type = "";
           }
 
-          // content type id mapping (support multiple field names)
           const ctVal = r.content_type_id || r.content_type || r.ct || "";
           if (ctVal !== undefined && ctVal !== null && String(ctVal).trim() !== "") {
             o.dataset.ct = String(ctVal);
@@ -200,30 +470,25 @@
             o.dataset.ct = "";
           }
 
-          // attach metadata for debugging or future logic
           if (id) o.dataset.id = id;
           if (label) o.dataset.label = label;
 
           productEl.appendChild(o);
         });
 
-        // restore previous selection if still valid
         if (prevSelected) {
           try {
             productEl.value = prevSelected;
             const ev = new Event("change", { bubbles: true });
             productEl.dispatchEvent(ev);
-          } catch (e) {
-            // ignore invalid restore
-          }
+          } catch (e) {}
         }
-      } catch (err) {
-        console.error("loadTypesByQuality error", err);
+      } catch (e) {
+        err("loadTypesByQuality error", e);
         clearSelect(productEl, "-- Error loading types --");
       }
     }
 
-    // ---------- Fetch Inventory Item ----------
     async function fetchInventoryItem(ct, oid, quality) {
       try {
         const json = await safeFetch(urls.inventory_item, {
@@ -233,13 +498,12 @@
           logistics_percent: logisticsEl ? (logisticsEl.value || "") : "",
         });
         return json;
-      } catch (err) {
-        console.error("fetchInventoryItem error", err);
+      } catch (e) {
+        err("fetchInventoryItem error", e);
         return null;
       }
     }
 
-    // ---------- Local Compute ----------
     function computeClientMetrics(priceStr, widthStr, widthUom, logisticsStr) {
       const parseNum = (v, fallback = 0) => {
         const n = Number(String(v || "").replace(/[^0-9.\-]/g, ""));
@@ -260,11 +524,10 @@
       return {
         final_price_per_unit: finalPricePerUnit.toFixed(2),
         price_per_sqfoot: pricePerSqft.toFixed(4),
-        final_cost: finalPricePerUnit.toFixed(2), // size=1 default
+        final_cost: finalPricePerUnit.toFixed(2),
       };
     }
 
-    // ---------- Populate Fields ----------
     async function populateFromItemResponse(json) {
       if (!json) return;
       const cost = json.cost_per_unit || json.price || "";
@@ -281,7 +544,6 @@
       if (pricePerSqftEl && price_per_sqft_server !== "") pricePerSqftEl.value = price_per_sqft_server;
       if (finalCostEl && final_cost_server !== "") finalCostEl.value = final_cost_server;
 
-      // --- Fill TYPE (use json.type when available, fallback to label)
       if (typeEl) {
         if (json.type) {
           typeEl.value = json.type;
@@ -294,19 +556,16 @@
         }
       }
 
-      // --- Auto-generate NAME = Quality + Type (visible only if form has it)
       try {
         const qualityName = qualityEl ? (qualityEl.value || "").trim() : "";
         const typeName = typeEl ? (typeEl.value || "").trim() : "";
         if (nameField) {
-          nameField.value =
-            qualityName && typeName ? `${qualityName} ${typeName}` : typeName || qualityName;
+          nameField.value = qualityName && typeName ? `${qualityName} ${typeName}` : typeName || qualityName;
         }
       } catch (e) {
         console.warn("Auto-name generation failed", e);
       }
 
-      // compute client metrics if any missing
       const clientMetrics = computeClientMetrics(
         cost || "",
         width || "",
@@ -314,12 +573,9 @@
         logisticsEl ? logisticsEl.value || "0" : "0"
       );
 
-      if (finalPriceEl && (!finalPriceEl.value || finalPriceEl.value === ""))
-        finalPriceEl.value = clientMetrics.final_price_per_unit;
-      if (pricePerSqftEl && (!pricePerSqftEl.value || pricePerSqftEl.value === ""))
-        pricePerSqftEl.value = clientMetrics.price_per_sqfoot;
-      if (finalCostEl && (!finalCostEl.value || finalCostEl.value === ""))
-        finalCostEl.value = clientMetrics.final_cost;
+      if (finalPriceEl && (!finalPriceEl.value || finalPriceEl.value === "")) finalPriceEl.value = clientMetrics.final_price_per_unit;
+      if (pricePerSqftEl && (!pricePerSqftEl.value || pricePerSqftEl.value === "")) pricePerSqftEl.value = clientMetrics.price_per_sqfoot;
+      if (finalCostEl && (!finalCostEl.value || finalCostEl.value === "")) finalCostEl.value = clientMetrics.final_cost;
     }
 
     // ---------- Event Handlers ----------
@@ -329,9 +585,7 @@
         loadQualitiesByCategory(category);
         clearSelect(productEl, "-- Select quality first --");
         setHidden("", "", "");
-        [costEl, widthEl, widthUomEl, finalPriceEl, pricePerSqftEl, finalCostEl].forEach(
-          (el) => el && (el.value = "")
-        );
+        [costEl, widthEl, widthUomEl, finalPriceEl, pricePerSqftEl, finalCostEl].forEach((el) => el && (el.value = ""));
         if (typeEl) typeEl.value = "";
         if (nameField) nameField.value = "";
       });
@@ -344,9 +598,7 @@
         loadTypesByQuality(category, q);
         clearSelect(productEl, "-- Loading product types --");
         setHidden("", "", "");
-        [costEl, widthEl, widthUomEl, finalPriceEl, pricePerSqftEl, finalCostEl].forEach(
-          (el) => el && (el.value = "")
-        );
+        [costEl, widthEl, widthUomEl, finalPriceEl, pricePerSqftEl, finalCostEl].forEach((el) => el && (el.value = ""));
         if (typeEl) typeEl.value = "";
         if (nameField) nameField.value = "";
       });
@@ -367,17 +619,20 @@
           const json = await fetchInventoryItem(ct, oid, quality);
           await populateFromItemResponse(json);
 
-          // Regenerate name
           const qualityVal = qualityEl ? (qualityEl.value || "").trim() : "";
           const typeVal = typeEl ? (typeEl.value || "").trim() : "";
-          if (nameField)
-            nameField.value =
-              qualityVal && typeVal ? `${qualityVal} ${typeVal}` : typeVal || qualityVal;
+          if (nameField) nameField.value = qualityVal && typeVal ? `${qualityVal} ${typeVal}` : typeVal || qualityVal;
+
+          // After product selection and population, attempt to load and render colors
+          try {
+            await window.COMPONENT_COLORS.load();
+          } catch (e) {
+            err("Colors load after product select failed", e);
+          }
         }
       });
     }
 
-    // Recompute metrics when logistics changes
     if (logisticsEl) {
       logisticsEl.addEventListener("input", () => {
         const price = costEl ? costEl.value || "" : "";
@@ -414,9 +669,26 @@
             }
           }
         }
-      } catch (err) {
-        log("initialStateRestore error", err);
+
+        // After restoring initial state, attempt to load colors (for edit pages)
+        try {
+          await window.COMPONENT_COLORS.load();
+        } catch (e) {
+          err("Initial colors load failed", e);
+        }
+      } catch (e) {
+        err("initialStateRestore error", e);
       }
     })();
+
+    // Post-submit hook (defensive)
+    const formEl = document.getElementById("component-form");
+    if (formEl) {
+      formEl.addEventListener("submit", () => {
+        setTimeout(() => {
+          window.COMPONENT_COLORS.load().catch(() => {});
+        }, 1200);
+      });
+    }
   }
 })();

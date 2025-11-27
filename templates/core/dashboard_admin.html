@@ -1,18 +1,69 @@
 {% extends 'base.html' %}
 {% load static %}
+<!-- reference image: /mnt/data/5c2095f2-b8aa-4d05-82d8-2b1e97343ed9.png -->
 {% block page_title %}Dashboard — Admin / CEO{% endblock %}
 
 {% block content %}
+<style>
+  /* Chart canvas responsiveness & visual polish matching navy/blue theme */
+  .dashboard-chart-canvas {
+    width: 100% !important;
+    max-width: 100%;
+    display: block;
+  }
+  .card .card-body {
+    padding-bottom: 1rem;
+  }
+  .chart-controls { gap: .5rem; display: flex; align-items: center; flex-wrap: wrap; }
+  .chart-controls .form-check { margin-bottom: 0; margin-left: .5rem; }
+
+  /* Themed card headers */
+  .card-header {
+    background: linear-gradient(90deg, rgba(14,49,78,0.03), rgba(30,144,255,0.02));
+    border-bottom: 1px solid rgba(11,39,64,0.04);
+  }
+  .card-title, .card-header h5 { color: var(--text-dark); }
+
+  /* Buttons: use accent for primary actions */
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: #186fd0; border-color: #186fd0; }
+
+  /* Outline primary in sidebar / small buttons remain subtle with accent traces */
+  .btn-outline-primary {
+    color: var(--primary);
+    border-color: rgba(30,144,255,0.18);
+  }
+  .btn-outline-primary:hover {
+    background: rgba(30,144,255,0.06);
+    color: var(--primary);
+  }
+
+  /* Muted helper text */
+  .text-muted { color: rgba(33,37,41,0.6) !important; }
+
+  /* Small visual tweak: ensure canvas containers have subtle card-like surface */
+  .card .card-body > canvas { background: transparent; }
+
+  /* Responsive spacing */
+  @media (max-width: 767px) {
+    .chart-controls { gap: .3rem; }
+    .chart-controls .form-check { margin-left: .25rem; }
+  }
+</style>
+
 <div class="row">
   <div class="col-lg-6">
-    <!-- Admin quick stats -->
     <div class="card mb-3">
       <div class="card-body">
         <h5 class="card-title">Admin Overview</h5>
         <p>Welcome, <strong>{{ user.get_full_name|default:user.username }}</strong></p>
         <p><strong>Pending leaves:</strong> {{ pending_leaves_count }}</p>
-        <div class="btn-group" role="group" aria-label="admin quick actions">
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'core:leave_list' %}?status=pending">Review Leaves</a>
+        <div class="btn-group" role="group">
+          <a class="btn btn-primary btn-sm" href="{% url 'core:leave_list' %}?status=pending">Review Leaves</a>
           <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:user_list' %}">User Management</a>
           <a class="btn btn-outline-success btn-sm" href="{% url 'core:delegation_create' %}">Create Delegation</a>
         </div>
@@ -21,7 +72,6 @@
   </div>
 
   <div class="col-lg-6">
-    <!-- Delegations list (all) -->
     <div class="card mb-3">
       <div class="card-body">
         <h5 class="card-title">Delegations (recent)</h5>
@@ -33,7 +83,6 @@
                 <small class="text-muted"> — {{ d.created_by.get_full_name|default:d.created_by.username }}</small>
                 <div><small class="text-muted">{{ d.start_date }}{% if d.end_date %} — {{ d.end_date }}{% endif %}</small></div>
                 <div class="mt-1">{{ d.description|truncatechars:160 }}</div>
-                <div class="mt-1"><a href="{% url 'core:delegation_list' %}" class="small">View all</a></div>
               </li>
               {% if not forloop.last %}<hr class="my-2"/>{% endif %}
             {% endfor %}
@@ -44,12 +93,10 @@
       </div>
     </div>
 
-    <!-- Leave approvals (recent pending) -->
     <div class="card mb-3">
       <div class="card-body">
         <h5 class="card-title">Leave Approvals</h5>
         <p>Review and approve or reject pending leave applications.</p>
-        <p>Now one will get any lave today</p>
         <a class="btn btn-primary btn-sm" href="{% url 'core:leave_list' %}?status=pending">View Pending Leaves</a>
       </div>
     </div>
@@ -67,68 +114,225 @@
       <div class="card-body">
         <div class="row g-3">
           <div class="col-md-6">
-            <div class="card h-100">
-              <div class="card-body">
-                <h6 class="card-title">Inventory added (last 7 days)</h6>
-                <canvas id="inventoryPieChart" aria-label="Inventory pie chart" role="img" width="400" height="300"></canvas>
-                <div class="mt-2 small text-muted">Shows accessory, fabric, printed items added in the last 7 days.</div>
-              </div>
-            </div>
+            <h6 class="card-title">Inventory added (last 7 days)</h6>
+            <canvas id="inventoryPieChart" class="dashboard-chart-canvas" width="800" height="260"></canvas>
+            <div class="mt-2 small text-muted">Accessory / Fabric / Printed added in last 7 days.</div>
           </div>
 
           <div class="col-md-6">
-            <div class="card h-100">
-              <div class="card-body">
-                <h6 class="card-title">Orders issued per week (last 8 weeks)</h6>
-                <canvas id="ordersLineChart" aria-label="Orders per week line chart" role="img" width="600" height="300"></canvas>
-                <div class="mt-2 small text-muted">Weekly counts of issued orders (uses applied_at if set, otherwise created_at).</div>
-              </div>
-            </div>
+            <h6 class="card-title">Orders issued per week (last 8 weeks)</h6>
+            <canvas id="ordersLineChart" class="dashboard-chart-canvas" width="900" height="260"></canvas>
+            <div class="mt-2 small text-muted">Weekly counts of issued orders.</div>
           </div>
         </div>
       </div>
     </div>
-  </div>  
+  </div>
 </div>
 
-{# Include Chart.js from CDN. If you prefer a local copy, replace this with your static path. #}
+<!-- STOCK USED -->
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+        <div>
+          <h5 class="mb-0">Stock used to prepare orders (daily)</h5>
+          <small class="text-muted">Totals for today + previous 7 days. Overlay by Order No.</small>
+        </div>
+
+        <div class="chart-controls">
+          <div class="d-flex gap-2 align-items-center">
+            <label for="orderSelect" class="mb-0 small text-muted me-2">Overlay order:</label>
+            <select id="orderSelect" class="form-select form-select-sm" style="min-width:220px;">
+              <option value="__none__">— Show totals only —</option>
+            </select>
+          </div>
+
+          <!-- Series toggles -->
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="fabric" id="toggleFabric" checked>
+            <label class="form-check-label small text-muted" for="toggleFabric">Fabric added</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="accessories" id="toggleAccessories" checked>
+            <label class="form-check-label small text-muted" for="toggleAccessories">Accessories used</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="printed" id="togglePrinted" checked>
+            <label class="form-check-label small text-muted" for="togglePrinted">Printed added</label>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <!-- IMPORTANT: set width & height attributes so canvas drawing buffer is available -->
+        <canvas id="stockUsedChart" class="dashboard-chart-canvas" width="1000" height="260"></canvas>
+        <div class="mt-2 small text-muted">X-axis: date. Y-axis: quantity used.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Chart.js must be loaded before dashboard.js so our script can detect it. #}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-{# Safely inject JSON produced by the view.
-   We produce JSON in the view with json.dumps(...). Here we escape it for JS
-   and then parse it with JSON.parse so the result is always a valid object. #}
+{# Inject JSON from view safely; static JS will use window.__LIVE_LINEN_CHARTS #}
 <script>
   (function () {
-    // Use escapejs to ensure the JSON string is safe to embed inside quotes.
-    // If the view didn't provide these, default to empty objects/arrays.
     var inventoryJsonStr = '{{ inventory_pie_json|default:"{}"|escapejs }}';
     var ordersJsonStr = '{{ orders_line_json|default:"{}"|escapejs }}';
-
-    var inventoryPie = {};
-    var ordersLine = {};
+    var stockUsedJsonStr = '{{ stock_used_json|default:"{}"|escapejs }}';
 
     try {
-      inventoryPie = JSON.parse(inventoryJsonStr || '{}');
+      window.__LIVE_LINEN_CHARTS = window.__LIVE_LINEN_CHARTS || {};
+      window.__LIVE_LINEN_CHARTS.inventoryPie = JSON.parse(inventoryJsonStr || '{}');
     } catch (e) {
-      console.error("Failed to parse inventory_pie_json:", e, inventoryJsonStr);
-      inventoryPie = {"labels":[], "values":[]};
+      console.error("inventory_pie_json parse error:", e);
+      window.__LIVE_LINEN_CHARTS.inventoryPie = {"labels":[],"values":[]};
     }
 
     try {
-      ordersLine = JSON.parse(ordersJsonStr || '{}');
+      window.__LIVE_LINEN_CHARTS.ordersLine = JSON.parse(ordersJsonStr || '{}');
     } catch (e) {
-      console.error("Failed to parse orders_line_json:", e, ordersJsonStr);
-      ordersLine = {"labels":[], "values":[]};
+      console.error("orders_line_json parse error:", e);
+      window.__LIVE_LINEN_CHARTS.ordersLine = {"labels":[],"values":[]};
     }
 
-    // Expose to window for static JS to pick up
-    window.__LIVE_LINEN_CHARTS = window.__LIVE_LINEN_CHARTS || {};
-    window.__LIVE_LINEN_CHARTS.inventoryPie = inventoryPie;
-    window.__LIVE_LINEN_CHARTS.ordersLine = ordersLine;
+    try {
+      var parsed = JSON.parse(stockUsedJsonStr || '{}') || {};
+      parsed.labels = parsed.labels || [];
+      parsed.totals = parsed.totals || [];
+      parsed.orders = parsed.orders || {};
+      parsed.fabric_added = parsed.fabric_added || [];
+      parsed.printed_added = parsed.printed_added || [];
+      parsed.accessories_used = parsed.accessories_used || [];
+      window.__LIVE_LINEN_CHARTS.stockUsed = parsed;
+    } catch (e) {
+      console.error("stock_used_json parse error:", e);
+      window.__LIVE_LINEN_CHARTS.stockUsed = {
+        "labels": [], "totals": [], "orders": {}, "fabric_added": [], "printed_added": [], "accessories_used": []
+      };
+    }
   })();
 </script>
 
-{# Your existing dashboard JS (keeps whatever other dashboard behaviour you have) #}
+{# Template-level helper to inject and wire extra datasets if dashboard.js creates the base chart #}
+<script>
+  (function () {
+    function findStockChartInstance() {
+      try {
+        if (window && window.Chart && window.Chart.instances) {
+          for (var k in window.Chart.instances) {
+            var inst = window.Chart.instances[k];
+            if (inst && inst.canvas && inst.canvas.id === 'stockUsedChart') return inst;
+          }
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function makeDataset(label, dataArr, dashed) {
+      return {
+        label: label,
+        data: (dataArr || []).map(function(v){ return Number(v) || 0; }),
+        tension: 0.2,
+        fill: false,
+        hidden: false,
+        pointRadius: 3,
+        borderDash: dashed ? [6,4] : undefined
+      };
+    }
+
+    function ensureExtraDatasets() {
+      var payload = window.__LIVE_LINEN_CHARTS && window.__LIVE_LINEN_CHARTS.stockUsed;
+      if (!payload) return;
+      var attempts = 0, maxAttempts = 30;
+      var iv = setInterval(function () {
+        attempts++;
+        var chart = findStockChartInstance();
+        if (!chart) {
+          if (attempts >= maxAttempts) { clearInterval(iv); console.warn("Stock chart instance not found; extras skipped."); }
+          return;
+        }
+
+        var existingLabels = (chart.data && chart.data.datasets || []).map(function(ds){ return ds.label; });
+        var toAdd = [];
+
+        if (existingLabels.indexOf('Fabric added') === -1 && payload.fabric_added.length>0) {
+          toAdd.push(makeDataset('Fabric added', payload.fabric_added, false));
+        }
+        if (existingLabels.indexOf('Accessories used') === -1 && payload.accessories_used.length>0) {
+          toAdd.push(makeDataset('Accessories used', payload.accessories_used, true));
+        }
+        if (existingLabels.indexOf('Printed added') === -1 && payload.printed_added.length>0) {
+          toAdd.push(makeDataset('Printed added', payload.printed_added, false));
+        }
+
+        if (toAdd.length > 0) {
+          toAdd.forEach(function(ds){ chart.data.datasets.push(ds); });
+          try { chart.update(); } catch (e) { console.warn("chart.update() failed after injecting datasets", e); }
+        }
+
+        wireCheckboxesToChart(chart, payload);
+        clearInterval(iv);
+      }, 200);
+    }
+
+    function wireCheckboxesToChart(chart, payload) {
+      function toggleByLabel(lbl, checked) {
+        if (!chart || !chart.data || !Array.isArray(chart.data.datasets)) return;
+        for (var i=0;i<chart.data.datasets.length;i++){
+          if (chart.data.datasets[i].label === lbl) {
+            chart.data.datasets[i].hidden = !checked;
+          }
+        }
+        try { chart.update(); } catch (e) { console.warn("chart.update() failed on toggle", e); }
+      }
+
+      var f = document.getElementById('toggleFabric');
+      var a = document.getElementById('toggleAccessories');
+      var p = document.getElementById('togglePrinted');
+
+      if (f) f.addEventListener('change', function(ev){ toggleByLabel('Fabric added', ev.target.checked); });
+      if (a) a.addEventListener('change', function(ev){ toggleByLabel('Accessories used', ev.target.checked); });
+      if (p) p.addEventListener('change', function(ev){ toggleByLabel('Printed added', ev.target.checked); });
+
+      var orderSel = document.getElementById('orderSelect');
+      if (orderSel && payload && payload.orders) {
+        var defaultOpt = orderSel.querySelector('option[value="__none__"]') ? orderSel.querySelector('option[value="__none__"]').outerHTML : '<option value="__none__">— Show totals only —</option>';
+        orderSel.innerHTML = defaultOpt;
+        Object.keys(payload.orders || {}).forEach(function(orderNo){
+          var opt = document.createElement('option'); opt.value = orderNo; opt.textContent = orderNo; orderSel.appendChild(opt);
+        });
+
+        orderSel.addEventListener('change', function(ev){
+          var sel = ev.target.value;
+          if (!chart || !chart.data || !Array.isArray(chart.data.datasets)) return;
+          for (var i=0;i<chart.data.datasets.length;i++){
+            var lbl = chart.data.datasets[i].label || '';
+            if (lbl.indexOf('Order #') === 0) chart.data.datasets[i].hidden = true;
+          }
+          if (sel && sel !== '__none__') {
+            var target = 'Order #' + sel;
+            for (var j=0;j<chart.data.datasets.length;j++){
+              if (chart.data.datasets[j].label === target) {
+                chart.data.datasets[j].hidden = false;
+              }
+            }
+          }
+          try { chart.update(); } catch(e){ console.warn("chart.update() after order overlay failed", e); }
+        });
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', ensureExtraDatasets);
+    } else {
+      ensureExtraDatasets();
+    }
+  })();
+</script>
+
+{# The static dashboard.js will still draw the primary charts; this template augments it. #}
 <script src="{% static 'core/js/dashboard.js' %}"></script>
 
 {% endblock %}

@@ -549,3 +549,59 @@ class ComponentMaster(models.Model):
             self.inventory_category = self.InventoryCategory.PRINTED
         else:
             self.inventory_category = self.InventoryCategory.ACCESSORY
+
+    # ------------------------------
+    # Color helpers (new)
+    # ------------------------------
+    def get_colors(self, include_inactive=False):
+        """
+        Return related Color objects for this ComponentMaster.
+        By default returns only active colors.
+        """
+        try:
+            qs = self.colors.all()
+            if not include_inactive:
+                qs = qs.filter(is_active=True)
+            return qs.order_by("name")
+        except Exception:
+            # If Color model not available or any error, return empty queryset-like list
+            return []
+
+
+class Color(models.Model):
+    """
+    New model to store Colors related to a ComponentMaster (i.e., colours available for a given Quality).
+    - Each Color belongs to a ComponentMaster (quality).
+    - Name is normalized (trimmed) and uniqueness enforced per ComponentMaster.
+    """
+    component_master = models.ForeignKey(
+        ComponentMaster,
+        on_delete=models.CASCADE,
+        related_name="colors",
+        help_text=_("The ComponentMaster (quality) this color belongs to."),
+    )
+    name = models.CharField(max_length=120, help_text=_("Color name (e.g., Red, Angora White)"))
+    is_active = models.BooleanField(default=True, help_text=_("Inactive colors are hidden in UI but retained for history."))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Color"
+        verbose_name_plural = "Colors"
+        ordering = ["name"]
+        unique_together = (("component_master", "name"),)
+
+    def __str__(self):
+        try:
+            return f"{self.name}"
+        except Exception:
+            return str(self.pk)
+
+    def save(self, *args, **kwargs):
+        # normalize name (trim whitespace)
+        if self.name is not None:
+            try:
+                self.name = str(self.name).strip()
+            except Exception:
+                pass
+        super().save(*args, **kwargs)

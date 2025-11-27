@@ -1,3 +1,4 @@
+# components/urls.py
 from django.urls import path
 from . import views
 
@@ -35,4 +36,11 @@ urlpatterns = [
     path("ajax/qualities-by-category/", views.qualities_by_category_json, name="qualities-by-category-json"),
     path("ajax/types-by-quality/", views.types_by_quality_json, name="types-by-quality-json"),
     path("ajax/inventory-item/", views.inventory_item_json, name="inventory-item-json"),
+
+    # ------------------------------------------------
+    # Color management AJAX endpoints (added)
+    # ------------------------------------------------
+    path("ajax/colors/", views.colors_list_json, name="colors-list-json"),
+    path("ajax/colors/create/", views.color_create_json, name="color-create-json"),
+    path("ajax/colors/delete/", views.color_delete_json, name="color-delete-json"),
 ]

@@ -1,5 +1,6 @@
 import logging
 import re
+import json
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, getcontext
 
 from django import forms
@@ -8,7 +9,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
-from .models import CostComponent, ComponentMaster
+from .models import CostComponent, ComponentMaster, Color
 from rawmaterials.models import Accessory
 
 logger = logging.getLogger(__name__)
@@ -196,6 +197,8 @@ class ComponentMasterForm(forms.ModelForm):
 
     - 'name' is a hidden field so JS can populate it; model.save() will also fill it as fallback.
     - 'type' is a readonly CharField displayed to users (populated by JS / server).
+    - `colors_qs` and `colors_json` are provided on the form instance for template/JS consumption.
+      Color creation/removal should be handled by AJAX endpoints, not by this form.save().
     """
     # hidden name field so JS can populate before submit; id required by component_form.js
     name = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"id": "id_name"}))
@@ -247,8 +250,11 @@ class ComponentMasterForm(forms.ModelForm):
         Initialize the form. If inventory_category indicates ACCESSORY, replace the 'quality'
         text input with a Select populated from Accessory.quality_text (preferred) or Accessory.quality.
         Also ensure the 'quality' widget always has the id/class/aria attributes expected by the JS.
-        """
 
+        Additionally, expose colors for the current instance via:
+          - self.colors_qs   -> queryset (or empty list) of Color objects (active only)
+          - self.colors_json -> JSON string for client-side consumption
+        """
         super().__init__(*args, **kwargs)
 
         # Make readonly fields not required
@@ -344,6 +350,42 @@ class ComponentMasterForm(forms.ModelForm):
                 wattrs.setdefault("aria-label", "Quality select")
         except Exception:
             logger.exception("Failed to ensure quality widget attributes in ComponentMasterForm.__init__")
+
+        # ---------------------------
+        # Colors: expose for template/JS
+        # ---------------------------
+        try:
+            # default empty values
+            self.colors_qs = []
+            self.colors_json = "[]"
+            # if this is an existing ComponentMaster instance, load its colors
+            if self.instance and getattr(self.instance, "pk", None):
+                try:
+                    qs = Color.objects.filter(component_master=self.instance)
+                    # return active colors first by default
+                    active_qs = qs.filter(is_active=True).order_by("name")
+                    self.colors_qs = active_qs
+                    # prepare simple JSON array for client consumption
+                    items = []
+                    for c in active_qs:
+                        items.append({"id": getattr(c, "id", None), "name": getattr(c, "name", ""), "is_active": getattr(c, "is_active", True)})
+                    self.colors_json = json.dumps(items)
+                except Exception:
+                    # fallback: try to access reverse relation if Color class not imported correctly
+                    try:
+                        rev_qs = getattr(self.instance, "colors", None)
+                        if rev_qs is not None:
+                            active_qs = rev_qs.filter(is_active=True).order_by("name")
+                            self.colors_qs = active_qs
+                            items = [{"id": getattr(c, "id", None), "name": getattr(c, "name", ""), "is_active": getattr(c, "is_active", True)} for c in active_qs]
+                            self.colors_json = json.dumps(items)
+                    except Exception:
+                        self.colors_qs = []
+                        self.colors_json = "[]"
+        except Exception:
+            logger.exception("Failed to prepare colors data on ComponentMasterForm")
+            self.colors_qs = []
+            self.colors_json = "[]"
 
     def _resolve_inventory_instance(self, ct_value, obj_value):
         """

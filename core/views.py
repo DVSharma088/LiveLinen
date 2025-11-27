@@ -1,4 +1,3 @@
-# core/views.py
 from datetime import timedelta
 import json
 import logging
@@ -15,13 +14,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django.db import transaction
 from django.template import TemplateDoesNotExist
-from django.db.models import Count
-from django.db.models.functions import TruncWeek, Coalesce
+from django.db.models import Count, Sum
+from django.db.models.functions import TruncWeek, Coalesce, TruncDate
 
 from .forms import CreateUserForm, AttendanceForm, LeaveApplicationForm, DelegationForm
 from .models import Attendance, LeaveApplication, Delegation
 from rawmaterials.models import Fabric, Accessory, Printed
-from issue_material.models import Issue
+from issue_material.models import Issue, IssueLine
 
 logger = logging.getLogger(__name__)
 
@@ -220,9 +219,11 @@ def dashboard(request):
     If a role-specific template is missing, fall back to the employee dashboard
     to avoid a TemplateDoesNotExist 500.
 
-    This function has been extended to prepare chart data for:
-      - inventory_pie_json: counts of Accessory / Fabric / Printed created in the last 7 days
-      - orders_line_json: weekly counts of Issues (applied_at or created_at) for the last N weeks
+    Extended to prepare:
+      - inventory_pie_json
+      - orders_line_json (weekly)
+      - stock_used_json (daily totals for today + 7 previous days and a per-order breakdown)
+      - new series: fabric_added, accessories_used, printed_added
     """
     # Common metrics
     fabric_count = Fabric.objects.count()
@@ -261,11 +262,13 @@ def dashboard(request):
     # -----------------------------
     try:
         now = timezone.now()
-        seven_days_ago = now - timedelta(days=7)
+        seven_days_ago_dt = now - timedelta(days=7)
+        seven_days_ago_date = seven_days_ago_dt.date()
 
-        accessory_count = Accessory.objects.filter(created_at__gte=seven_days_ago).count()
-        fabric_count_week = Fabric.objects.filter(created_at__gte=seven_days_ago).count()
-        printed_count = Printed.objects.filter(created_at__gte=seven_days_ago).count()
+        # Inventory pie (last 7 days)
+        accessory_count = Accessory.objects.filter(created_at__gte=seven_days_ago_dt).count()
+        fabric_count_week = Fabric.objects.filter(created_at__gte=seven_days_ago_dt).count()
+        printed_count = Printed.objects.filter(created_at__gte=seven_days_ago_dt).count()
 
         inventory_pie = {
             "labels": ["Accessory", "Fabric", "Printed"],
@@ -296,7 +299,6 @@ def dashboard(request):
             try:
                 wk_date = timezone.localtime(wk).date().isoformat()
             except Exception:
-                # as fallback, if wk is already date-like
                 wk_date = getattr(wk, "date", lambda: wk)().isoformat() if wk else None
             if wk_date:
                 week_counts_map[wk_date] = row.get("cnt", 0)
@@ -305,14 +307,143 @@ def dashboard(request):
         for wk_label in week_starts:
             orders_line["values"].append(week_counts_map.get(wk_label, 0))
 
+        # -----------------------------
+        # NEW: Stock used per day (today + previous 7 days) and per-order breakdown
+        # Also: fabric_used (sum per day via IssueLine), printed_added (count per day), accessories_used (sum qty per day)
+        # -----------------------------
+        # Build the list of dates (8 days: 7 previous + today) in ISO format
+        days = [(seven_days_ago_date + timedelta(days=i)) for i in range(0, 8)]
+        day_labels = [d.isoformat() for d in days]
+
+        # 1) IssueLine totals per day and per-order breakdown (existing)
+        line_agg = (
+            IssueLine.objects
+            .annotate(issued_date=TruncDate("created_at"))
+            .filter(issued_date__gte=seven_days_ago_date)
+            .values("issued_date", "issue__order_no")
+            .annotate(total_qty=Sum("qty"))
+            .order_by("issued_date")
+        )
+
+        totals_map = {d.isoformat(): 0.0 for d in days}
+        order_date_map = {}  # order_no -> {date_iso: qty}
+
+        for row in line_agg:
+            date_obj = row.get("issued_date")
+            if date_obj is None:
+                continue
+            date_iso = date_obj.isoformat()
+            order_no = row.get("issue__order_no") or "—"
+            qty = row.get("total_qty") or 0
+            try:
+                qty_val = float(qty)
+            except Exception:
+                qty_val = float(str(qty))
+
+            totals_map[date_iso] = totals_map.get(date_iso, 0.0) + qty_val
+            od = order_date_map.setdefault(order_no, {})
+            od[date_iso] = od.get(date_iso, 0.0) + qty_val
+
+        order_breakdown = {}
+        for order_no, date_map in order_date_map.items():
+            values = [date_map.get(d, 0.0) for d in day_labels]
+            order_breakdown[order_no] = values
+
+        # 2) Fabric used per day (sum of IssueLine.qty where inventory_type == fabric)
+        fabric_lines_qs = (
+            IssueLine.objects
+            .filter(inventory_type=IssueLine.INVENTORY_TYPE_FABRIC)
+            .annotate(issued_date=TruncDate("created_at"))
+            .filter(issued_date__gte=seven_days_ago_date)
+            .values("issued_date")
+            .annotate(total_qty=Sum("qty"))
+            .order_by("issued_date")
+        )
+        fabric_map = {d.isoformat(): 0.0 for d in days}
+        for row in fabric_lines_qs:
+            d = row.get("issued_date")
+            if not d:
+                continue
+            qty = row.get("total_qty") or 0
+            try:
+                qty_val = float(qty)
+            except Exception:
+                qty_val = float(str(qty))
+            fabric_map[d.isoformat()] = qty_val
+
+        fabric_added_series = [fabric_map.get(d, 0.0) for d in day_labels]
+
+        # 3) Printed added per day (count) - remains as created count for Printed items
+        printed_qs = (
+            Printed.objects
+            .annotate(day=TruncDate("created_at"))
+            .filter(day__gte=seven_days_ago_date)
+            .values("day")
+            .annotate(cnt=Count("pk"))
+            .order_by("day")
+        )
+        printed_map = {d.isoformat(): 0 for d in days}
+        for row in printed_qs:
+            d = row.get("day")
+            if not d:
+                continue
+            printed_map[d.isoformat()] = row.get("cnt", 0)
+
+        printed_added_series = [printed_map.get(d, 0) for d in day_labels]
+
+        # 4) Accessories used per day (sum of IssueLine.qty where inventory_type == accessory)
+        accessory_lines_qs = (
+            IssueLine.objects
+            .filter(inventory_type=IssueLine.INVENTORY_TYPE_ACCESSORY)
+            .annotate(issued_date=TruncDate("created_at"))
+            .filter(issued_date__gte=seven_days_ago_date)
+            .values("issued_date")
+            .annotate(total_qty=Sum("qty"))
+            .order_by("issued_date")
+        )
+        accessories_map = {d.isoformat(): 0.0 for d in days}
+        for row in accessory_lines_qs:
+            d = row.get("issued_date")
+            if not d:
+                continue
+            qty = row.get("total_qty") or 0
+            try:
+                qty_val = float(qty)
+            except Exception:
+                qty_val = float(str(qty))
+            accessories_map[d.isoformat()] = qty_val
+
+        accessories_used_series = [accessories_map.get(d, 0.0) for d in day_labels]
+
+        # Build final payload (preserve existing fields plus new series)
+        stock_used_payload = {
+            "labels": day_labels,
+            "totals": [totals_map.get(d, 0.0) for d in day_labels],
+            "orders": order_breakdown,  # dict: order_no -> list of values aligned with labels
+            # new series (fabric_added now reflects fabric USED)
+            "fabric_added": fabric_added_series,
+            "printed_added": printed_added_series,
+            "accessories_used": accessories_used_series,
+        }
+
+        # Dump JSON strings to inject into template safely
         context["inventory_pie_json"] = json.dumps(inventory_pie)
         context["orders_line_json"] = json.dumps(orders_line)
+        context["stock_used_json"] = json.dumps(stock_used_payload)
     except Exception as exc:
         # Chart preparation should not break the dashboard render
         logger.exception("Failed to prepare dashboard chart data for user=%s exc=%s", request.user.username, exc)
         # provide empty safe defaults
         context["inventory_pie_json"] = json.dumps({"labels": ["Accessory", "Fabric", "Printed"], "values": [0, 0, 0]})
         context["orders_line_json"] = json.dumps({"labels": [], "values": []})
+        context["stock_used_json"] = json.dumps({
+            "labels": [],
+            "totals": [],
+            "orders": {},
+            "fabric_added": [],
+            "printed_added": [],
+            "accessories_used": [],
+        })
 
     # Choose template by role
     if is_admin(request.user):

@@ -1,3 +1,4 @@
+# costing_sheet/urls.py
 from django.urls import path
 from . import views
 
@@ -11,7 +12,8 @@ from .views import (
     ajax_get_accessory_detail,
     ajax_accessories_bulk,
     ajax_compute_accessory_line,
-    ajax_compute_sku,  # <-- NEW import
+    ajax_compute_sku,
+    colors_list_json,  # compatibility endpoint exported from views.py
 )
 
 app_name = "costing_sheet"
@@ -25,6 +27,11 @@ urlpatterns = [
     path("ajax/sizes/", ajax_get_sizes, name="ajax_get_sizes"),
     path("ajax/category-details/", ajax_get_category_details, name="ajax_get_category_details"),
     path("ajax/component-details/", ajax_get_component_details, name="ajax_get_component_details"),
+
+    # ---------- NEW: colors compatibility endpoint ----------
+    # Provides a simple list-of-colors JSON for a component, used by older templates/JS.
+    # Example: /costing/ajax/colors/?component_id=123
+    path("ajax/colors/", colors_list_json, name="colors_list_json"),
 
     # ---------- AJAX: accessories ----------
     path("ajax/accessories/", ajax_list_accessories, name="ajax_list_accessories"),
